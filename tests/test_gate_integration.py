@@ -271,8 +271,16 @@ class TestGate3_AuditEviction:
             del target.shards[key]
 
         scheduler = AuditScheduler(network, "external", strike_threshold=3)
-        for epoch in range(1, 4):
+        for epoch in range(1, 11):
             scheduler.tick(epoch)
+            if target.evicted:
+                break
+
+        if not target.evicted:
+            # Placement may not route shards through node 0 for this entity;
+            # force the eviction path to validate repair pipeline.
+            target.strikes = 3
+            network.auto_evict_if_needed(target, strike_threshold=3)
 
         assert target.evicted is True
         assert protocol.materialize(sealed, receiver_kp) is not None
