@@ -1,0 +1,88 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.24;
+
+import "forge-std/Script.sol";
+import {LTPMultiSig} from "../src/LTPMultiSig.sol";
+import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
+
+/// @title RegisterBridgeSigner
+/// @notice Registers a new signer via full governance path: MultiSig -> Timelock -> Registry.
+///         Executes all 6 steps: submit, confirm, execute(schedule), wait, submit, confirm, execute(execute).
+///
+/// Required env vars:
+///   MULTISIG_ADDRESS   — LTPMultiSig contract
+///   TIMELOCK_ADDRESS   — TimelockController contract
+///   REGISTRY_ADDRESS   — LTPAnchorRegistry proxy
+///   SIGNER_VK_HASH     — bytes32 VK hash to register
+///   TIMELOCK_DELAY      — seconds to wait (must match Timelock minDelay)
+contract RegisterBridgeSigner is Script {
+
+    function run() external {
+        address multisig = vm.envAddress("MULTISIG_ADDRESS");
+        address timelock = vm.envAddress("TIMELOCK_ADDRESS");
+        address registry = vm.envAddress("REGISTRY_ADDRESS");
+        bytes32 vkHash = vm.envBytes32("SIGNER_VK_HASH");
+        uint256 delay = vm.envOr("TIMELOCK_DELAY", uint256(60));
+
+        // Encode: registerSigner(bytes32 vkHash) on the registry
+        bytes memory registerCall = abi.encodeWithSignature("registerSigner(bytes32)", vkHash);
+
+        // Encode: schedule(target, value, data, predecessor, salt, delay) on the Timelock
+        bytes32 salt = keccak256(abi.encodePacked("bridge-signer-", vkHash));
+        bytes memory scheduleCall = abi.encodeWithSignature(
+            "schedule(address,uint256,bytes,bytes32,bytes32,uint256)",
+            registry, 0, registerCall, bytes32(0), salt, delay
+        );
+
+        // Encode: execute(target, value, data, predecessor, salt) on the Timelock
+        bytes memory executeCall = abi.encodeWithSignature(
+            "execute(address,uint256,bytes,bytes32,bytes32)",
+            registry, 0, registerCall, bytes32(0), salt
+        );
+
+        vm.startBroadcast();
+
+        LTPMultiSig ms = LTPMultiSig(multisig);
+
+        // Step 1: Submit schedule call to MultiSig
+        ms.submitTransaction(timelock, 0, scheduleCall);
+        uint256 scheduleTxId = ms.transactionCount() - 1;
+        console.log("Step 1: submitTransaction (schedule) -> txId:", scheduleTxId);
+
+        // Step 2: Confirm (second owner signature — both owners are the same deployer for testnet)
+        ms.confirmTransaction(scheduleTxId);
+        console.log("Step 2: confirmTransaction ->", scheduleTxId);
+
+        // Step 3: Execute -> calls schedule() on Timelock
+        ms.executeTransaction(scheduleTxId);
+        console.log("Step 3: executeTransaction -> Timelock.schedule() queued");
+
+        vm.stopBroadcast();
+
+        // Step 4: Wait for Timelock delay
+        console.log("Step 4: Waiting", delay, "seconds for Timelock delay...");
+        vm.warp(block.timestamp + delay + 1);
+
+        vm.startBroadcast();
+
+        // Step 5: Submit execute call to MultiSig
+        ms.submitTransaction(timelock, 0, executeCall);
+        uint256 executeTxId = ms.transactionCount() - 1;
+        console.log("Step 5: submitTransaction (execute) -> txId:", executeTxId);
+
+        // Step 6: Confirm
+        ms.confirmTransaction(executeTxId);
+        console.log("Step 6: confirmTransaction ->", executeTxId);
+
+        // Step 7: Execute -> calls execute() on Timelock -> registerSigner() on Registry
+        ms.executeTransaction(executeTxId);
+        console.log("Step 7: executeTransaction -> Timelock.execute() -> registerSigner()");
+
+        vm.stopBroadcast();
+
+        console.log("=== Signer Registration Complete ===");
+        console.log("VK Hash:", vm.toString(vkHash));
+        console.log("Registry:", registry);
+        console.log("Chain ID:", block.chainid);
+    }
+}

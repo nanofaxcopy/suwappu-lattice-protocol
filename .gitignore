@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Distribution / packaging
+*.egg-info/
+*.egg
+dist/
+build/
+sdist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.hypothesis/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Secrets and environment
+secrets/
+.env
+.env.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Claude Code
+.claude/
+CLAUDE.md
+docs/ETP_UNIFIED_NODE_DEPLOYMENT_PLAN.md
+docs/ETP_IMPLEMENTATION_STATUS.md
+
+# Bridge execution outputs
+bridge_results*.json
+bridge_operator_keypair.json
+
+# Solidity / Foundry (contracts/)
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+contracts/lib/
+
+# Rust / SP1 (zkvm/)
+zkvm/*/target/
+
+# Node
+node_modules/
+
+# Runtime data
+rocksdb_shards/
+rocksdb_shards
+
+# Stale pip artifacts
+=*

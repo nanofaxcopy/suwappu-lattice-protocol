@@ -1,0 +1,67 @@
+# ETP Log Service — StatefulSet (single instance, persistent storage)
+#
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: log-service
+  namespace: etp
+  labels:
+    app: etp
+    component: log-service
+spec:
+  serviceName: log-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: etp
+      component: log-service
+  template:
+    metadata:
+      labels:
+        app: etp
+        component: log-service
+    spec:
+      containers:
+        - name: log-service
+          image: etp/node:latest
+          ports:
+            - containerPort: 50052
+              name: grpc
+            - containerPort: 9090
+              name: metrics
+          env:
+            - name: ETP_REQUIRE_REAL_CRYPTO
+              value: "1"
+            - name: ETP_SERVICE
+              value: "log-service"
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+          volumeMounts:
+            - name: log-data
+              mountPath: /data/merkle
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+  volumeClaimTemplates:
+    - metadata:
+        name: log-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: fast-ssd
+        resources:
+          requests:
+            storage: 50Gi

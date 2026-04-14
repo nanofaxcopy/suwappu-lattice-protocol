@@ -1,0 +1,73 @@
+# ETP Node Configuration Template
+# Copy to node.toml and customize for your deployment.
+
+[node]
+node_id = "node-us-east-1"
+region = "US-East"
+
+[network]
+listen_host = "0.0.0.0"
+listen_port = 50051
+rest_port = 8080
+seed_peers = ["10.0.1.10:50051", "10.0.1.11:50051"]
+
+[crypto]
+keypair_path = ""            # empty = generate ephemeral keypair
+require_real_crypto = true   # false = allow PoC simulation mode
+
+[storage]
+backend = "memory"           # "memory" | "sqlite" | "filesystem"
+path = ""                    # path for sqlite db or filesystem dir (ignored for memory)
+
+[server]
+max_workers = 10
+log_level = "INFO"
+audit_interval = 60.0        # PDP audit interval in seconds
+strike_threshold = 3          # audit failures before auto-eviction
+diagnostics_port = 8081       # node diagnostics REST endpoint
+diagnostics_public_mode = false  # true = redact addresses and financials
+
+[anchor]
+enabled = false              # opt-in: set true to enable on-chain anchoring
+rpc_url = ""                 # ETP_ANCHOR_RPC_URL — JSON-RPC endpoint
+registry_address = ""        # ETP_ANCHOR_REGISTRY — LTPAnchorRegistry proxy
+operator_key = ""            # ETP_ANCHOR_OPERATOR_KEY — hex-encoded private key
+chain_id = 103115120         # GSX Testnet default
+batch_size = 50              # max records per anchor tx
+interval = 15.0              # seconds between anchor attempts
+max_wait = 60.0              # max seconds to wait for tx receipt
+confirmation_depth = 3       # blocks before CONFIRMED (receipt depth check)
+finality_depth = 1           # blocks before CONFIRMED → FINALIZED
+max_rpc_retries = 5          # consecutive RPC failures before entity marked FAILED
+rest_port = 8082             # anchor status REST endpoint
+
+[gateway]
+enabled = false              # true = FastAPI unified REST (replaces legacy HTTP servers)
+port = 8080                  # gateway port (health + CT + anchor + diagnostics + transfers)
+jwt_enabled = false          # true = ML-DSA-65 JWT auth on protected endpoints
+jwt_ttl_seconds = 3600       # JWT token time-to-live
+rate_limit_per_minute = 60   # per-caller rate limit (0 = disabled)
+
+[tls]
+enabled = false              # true = mTLS on gRPC channels
+cert_path = ""               # server certificate PEM file
+key_path = ""                # server private key PEM file
+ca_path = ""                 # CA certificate bundle PEM file
+require_client_cert = true   # true = mutual TLS (require client cert)
+
+[gossip]
+enabled = false              # true = gossip-based peer discovery
+interval_seconds = 30.0      # seconds between gossip exchange rounds
+max_peers = 20               # max peers per exchange message
+liveness_timeout_seconds = 90.0  # disconnect peer after no ping for this duration
+
+[bridge_operator]
+enabled = false              # true = persistent cross-chain bridge daemon
+interval = 30.0              # seconds between bridge polls
+direction = "gsx_to_base"   # "gsx_to_base" | "base_to_gsx"
+max_retries = 3              # retries before dropping a failed entity
+challenge_period = 3600.0    # challenge window seconds (3600 = 1hr testnet, 604800 = 7d prod)
+zk_mode = "simulated"        # "simulated" | "stark"
+
+[observability]
+enabled = true               # lightweight — metrics + structured logging + alerts

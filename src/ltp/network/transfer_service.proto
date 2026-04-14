@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package ltp.transfer;
+
+// TransferService: high-level commit/materialize RPCs for cross-node transfers.
+// Builds on ShardService (data-plane) and NodeService (control-plane).
+service TransferService {
+  // Commit an entity: encode, encrypt, distribute shards, return transfer bundle.
+  rpc CommitEntity(CommitRequest) returns (CommitResponse);
+
+  // Materialize an entity from a transfer bundle.
+  rpc MaterializeEntity(MaterializeRequest) returns (MaterializeResponse);
+}
+
+message CommitRequest {
+  bytes content = 1;           // Raw entity content
+  string shape = 2;            // Media type (e.g., "application/octet-stream")
+  int32 n = 3;                 // Erasure coding: total shards (0 = default)
+  int32 k = 4;                 // Erasure coding: reconstruction threshold (0 = default)
+  bytes receiver_ek = 5;       // ML-KEM encapsulation key of receiver (empty = self)
+}
+
+message CommitResponse {
+  bool success = 1;
+  string entity_id = 2;
+  bytes transfer_bundle = 3;   // Serialized TransferBundle
+  string error = 4;
+}
+
+message MaterializeRequest {
+  bytes transfer_bundle = 1;   // Serialized TransferBundle
+}
+
+message MaterializeResponse {
+  bool success = 1;
+  bytes content = 2;           // Reconstructed entity content
+  string entity_id = 3;
+  string error = 4;
+}

@@ -1,0 +1,101 @@
+# ETP Mainnet Configuration
+#
+# TURNKEY: Copy this file and fill in the placeholder values (marked with
+# REPLACE_*) to switch from testnet to mainnet. No code changes required.
+#
+# This config enables all security hardening flags. The node team must
+# provide: RPC endpoints, operator keys (via KMS), TLS certificates,
+# seed peer addresses, and contract addresses from mainnet deployment.
+
+[node]
+node_id = "REPLACE_NODE_ID"           # e.g., "etp-mainnet-us-east-1"
+region = "REPLACE_REGION"             # e.g., "US-East"
+
+[network]
+listen_host = "0.0.0.0"
+listen_port = 50051
+rest_port = 8080
+seed_peers = []                        # REPLACE: ["peer1:50051", "peer2:50051"]
+
+[crypto]
+keypair_path = ""                      # REPLACE: path to persisted ML-DSA key (or leave empty for KMS)
+require_real_crypto = true             # MANDATORY: blocks PoC simulation fallback
+
+[storage]
+backend = "sqlite"                     # Persistent storage (upgrade to "rocksdb" when available)
+path = "/data/etp"                     # REPLACE: persistent volume mount
+
+[server]
+max_workers = 30
+log_level = "WARN"                     # Production: less verbose
+audit_interval = 30.0                  # More frequent audits than testnet (60s)
+strike_threshold = 3
+diagnostics_port = 8081
+diagnostics_public_mode = true         # Redact addresses and financials on public endpoints
+
+[anchor]
+enabled = true
+rpc_url = "REPLACE_MAINNET_RPC_URL"    # Mainnet JSON-RPC endpoint
+registry_address = "REPLACE_MAINNET_REGISTRY"  # Mainnet LTPAnchorRegistry proxy
+operator_key = ""                      # REPLACE: via KMS or env var ETP_ANCHOR_OPERATOR_KEY
+chain_id = 0                           # REPLACE: mainnet chain ID
+batch_size = 100
+interval = 60.0                        # Slower batching for production efficiency
+max_wait = 120.0
+confirmation_depth = 12                # Mainnet: 12 blocks before CONFIRMED
+finality_depth = 3                     # Mainnet: 3 blocks before FINALIZED
+max_rpc_retries = 5
+rest_port = 8082
+
+[gateway]
+enabled = true
+port = 8080
+jwt_enabled = true                     # MANDATORY: ML-DSA-65 JWT auth on all protected endpoints
+jwt_ttl_seconds = 3600
+rate_limit_per_minute = 30             # Stricter than testnet (60)
+
+[tls]
+enabled = true                         # MANDATORY: mTLS on all gRPC channels
+cert_path = "REPLACE_CERT_PATH"        # e.g., "/certs/server.pem"
+key_path = "REPLACE_KEY_PATH"          # e.g., "/certs/server.key"
+ca_path = "REPLACE_CA_PATH"            # e.g., "/certs/ca-bundle.pem"
+require_client_cert = true
+
+[gossip]
+enabled = true
+interval_seconds = 30.0
+max_peers = 50                         # Larger mesh than testnet (20)
+liveness_timeout_seconds = 90.0
+
+[bridge_operator]
+enabled = true
+interval = 30.0
+direction = "REPLACE_BRIDGE_DIRECTION" # "gsx_to_base" | "base_to_gsx"
+max_retries = 3
+challenge_period = 604800.0            # 7 days (testnet: 1 hour)
+zk_mode = "stark"                      # Post-quantum hash-only proofs (testnet: "simulated")
+
+[kms]
+backend = "aws"                        # FIPS 140-3 Level 3 key storage
+region = "REPLACE_AWS_REGION"          # e.g., "us-east-1"
+key_arn = "REPLACE_KMS_KEY_ARN"        # e.g., "arn:aws:kms:us-east-1:..."
+endpoint = ""                          # Empty for production (non-empty for localstack testing)
+
+[governance]
+contract_address = "REPLACE_GOVERNANCE_CONTRACT"  # Mainnet ETPGovernance address
+chain_rpc = "REPLACE_GOVERNANCE_RPC"              # Same as anchor RPC or governance-specific
+chain_id = 0                                      # REPLACE: mainnet chain ID
+
+[observability]
+enabled = true
+
+# ==========================================================================
+# Smart contract deployment parameters (reference — used by Foundry scripts)
+# ==========================================================================
+#
+# Timelock delay:       86,400 seconds (24 hours)
+# Challenge period:     604,800 seconds (7 days)
+# Min operator bond:    10 ETH (10000000000000000000 wei)
+# Min challenger bond:  1 ETH (1000000000000000000 wei)
+# ZK verification mode: 3 (STARK — post-quantum)
+# MultiSig threshold:   2-of-3 (production) or 3-of-5 (high security)

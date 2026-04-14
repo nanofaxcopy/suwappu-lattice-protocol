@@ -1,0 +1,8 @@
+# ETP Kubernetes Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: etp
+  labels:
+    app: etp
+    managed-by: helm

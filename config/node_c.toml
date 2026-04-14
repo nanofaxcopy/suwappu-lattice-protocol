@@ -1,0 +1,25 @@
+# ETP Node C — EU-West (3-node cluster)
+
+[node]
+node_id = "node-eu-west-1"
+region = "EU-West"
+
+[network]
+listen_host = "0.0.0.0"
+listen_port = 50051
+rest_port = 8080
+seed_peers = ["10.0.1.10:50051", "10.0.1.11:50051"]
+
+[crypto]
+keypair_path = ""
+require_real_crypto = true
+
+[storage]
+backend = "sqlite"
+path = "/var/etp/node-c/shards.db"
+
+[server]
+max_workers = 10
+log_level = "INFO"
+audit_interval = 60.0
+strike_threshold = 3

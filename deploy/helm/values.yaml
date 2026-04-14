@@ -1,0 +1,105 @@
+# ETP Helm Chart Values
+#
+#
+# Usage: helm install etp ./deploy/helm -f deploy/helm/values.yaml
+
+# Global settings
+global:
+  namespace: etp
+  image:
+    repository: etp/node
+    tag: latest
+    pullPolicy: IfNotPresent
+  requireRealCrypto: true
+
+# API Gateway — stateless, 3 replicas
+apiGateway:
+  replicas: 3
+  port: 8000
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  service:
+    type: ClusterIP
+    port: 8000
+
+# Protocol Service — stateless, 2 replicas
+protocolService:
+  replicas: 2
+  port: 50051
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+
+# Log Service — stateful, single instance
+logService:
+  replicas: 1
+  port: 50052
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+  storage:
+    size: 50Gi
+    storageClass: fast-ssd
+
+# Shard Nodes — stateful, 8 across 3+ AZs
+shardNode:
+  replicas: 8
+  port: 50053
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  storage:
+    size: 100Gi
+    storageClass: standard-ssd
+
+# Key Rotation — weekly CronJob
+keyRotation:
+  schedule: "0 3 * * 0"  # Sunday 3am UTC
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+# Anchor configuration
+anchor:
+  enabled: true
+  chains:
+    - chainId: 103115120
+      label: gsx_testnet
+      rpcUrl: ""  # Set via secrets
+      registryAddress: "0xB29d8BFF4973D1D7bcB10E32112EBB8fdd530bF4"
+    - chainId: 84532
+      label: base_sepolia
+      rpcUrl: ""  # Set via secrets
+      registryAddress: "0x79eF1B7914f98C5C1404617449AB1f377c475996"
+
+# Monitoring
+monitoring:
+  prometheus:
+    enabled: true
+    port: 9090
+  grafana:
+    enabled: true
+
+# TLS
+tls:
+  enabled: true
+  certManager: true
+  issuer: letsencrypt-prod

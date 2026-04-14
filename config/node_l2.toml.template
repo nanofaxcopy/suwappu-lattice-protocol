@@ -1,0 +1,56 @@
+# ETP Node — Dual-Chain Configuration Template
+#
+# This template configures a node to anchor on both GSX Testnet and Base Sepolia.
+# Copy to config/node_l2.toml and fill in the operator keys.
+
+[node]
+node_id = "node-dual-chain-1"
+region = "US-East"
+
+[network]
+listen_host = "0.0.0.0"
+listen_port = 50051
+rest_port = 8080
+seed_peers = []
+
+[crypto]
+keypair_path = ""
+require_real_crypto = true
+
+[storage]
+backend = "sqlite"
+path = "/var/etp/node/shards.db"
+
+[server]
+max_workers = 10
+log_level = "INFO"
+audit_interval = 60.0
+strike_threshold = 3
+diagnostics_port = 8081
+
+[anchor]
+enabled = true
+batch_size = 50
+interval = 15.0
+max_wait = 60.0
+rest_port = 8082
+
+# Primary chain: GSX Testnet
+[[anchor.chains]]
+chain_id = 103115120
+label = "gsx_testnet"
+rpc_url = "https://rpc.testnet.gsx.network"
+registry_address = "0xB29d8BFF4973D1D7bcB10E32112EBB8fdd530bF4"
+operator_key = "REPLACE_WITH_GSX_OPERATOR_KEY"  # TODO: replace with KMS key ID before mainnet
+confirmation_depth = 3
+finality_depth = 1
+
+# Secondary chain: Base Sepolia
+[[anchor.chains]]
+chain_id = 84532
+label = "base_sepolia"
+rpc_url = "https://sepolia.base.org"
+registry_address = "0x79eF1B7914f98C5C1404617449AB1f377c475996"
+operator_key = "REPLACE_WITH_BASE_OPERATOR_KEY"  # TODO: replace with KMS key ID before mainnet
+confirmation_depth = 6
+finality_depth = 2

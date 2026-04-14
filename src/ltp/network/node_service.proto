@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package ltp.node;
+
+// NodeService: control-plane gRPC interface for ETP node discovery and health.
+// Separate from ShardService (data-plane) — each node runs both.
+service NodeService {
+  // Post-quantum authenticated handshake between nodes.
+  rpc Handshake(HandshakeRequest) returns (HandshakeResponse);
+
+  // Lightweight liveness check.
+  rpc Ping(PingRequest) returns (PingResponse);
+
+  // Full health status for monitoring and load balancers.
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+
+  // Gossip-based peer exchange (ML-DSA-65 signed).
+  rpc ExchangePeers(PeerExchangeRequest) returns (PeerExchangeResponse);
+}
+
+message HandshakeRequest {
+  // Serialized SignedEnvelope containing a HandshakePayload.
+  bytes signed_envelope = 1;
+  // Protocol version for forward compatibility.
+  uint32 protocol_version = 2;
+}
+
+message HandshakeResponse {
+  bool accepted = 1;
+  // Serialized SignedEnvelope with responder's HandshakePayload.
+  bytes signed_envelope = 2;
+  // Human-readable reason if rejected.
+  string reject_reason = 3;
+}
+
+message PingRequest {
+  string sender_node_id = 1;
+}
+
+message PingResponse {
+  string node_id = 1;
+  double timestamp = 2;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  string status = 1;           // "ok", "degraded", "unhealthy"
+  string node_id = 2;
+  string region = 3;
+  double uptime_seconds = 4;
+  int32 peer_count = 5;
+  int64 shard_count = 6;
+  uint32 protocol_version = 7;
+}
+
+// Gossip peer exchange messages.
+message PeerExchangeRequest {
+  bytes signed_message = 1;    // Serialized + ML-DSA-65 signed PeerExchangeMessage
+  bytes signature = 2;         // ML-DSA-65 signature over signed_message
+  bytes sender_vk = 3;         // Sender's verification key (for signature check)
+  uint32 protocol_version = 4;
+}
+
+message PeerExchangeResponse {
+  bool accepted = 1;
+  bytes signed_message = 2;    // Responder's peer list (reciprocal exchange)
+  bytes signature = 3;         // Responder's ML-DSA-65 signature
+  bytes sender_vk = 4;         // Responder's verification key
+  string reject_reason = 5;
+  int32 peers_discovered = 6;  // How many new peers the receiver found
+}
