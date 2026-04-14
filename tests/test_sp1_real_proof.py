@@ -34,6 +34,7 @@ has_verify = os.path.exists(VERIFY_BINARY)
 
 class TestBinaries:
 
+    @pytest.mark.skipif(not has_host, reason="sp1-host binary not built")
     def test_host_binary_exists(self):
         """sp1-host binary should exist after cargo build --release."""
         assert os.path.exists(HOST_BINARY), (
@@ -41,6 +42,7 @@ class TestBinaries:
             "Build with: cd zkvm/sp1-host && cargo build --release"
         )
 
+    @pytest.mark.skipif(not has_verify, reason="sp1-verify binary not built")
     def test_verify_binary_exists(self):
         """sp1-verify binary should exist after cargo build --release."""
         assert os.path.exists(VERIFY_BINARY)

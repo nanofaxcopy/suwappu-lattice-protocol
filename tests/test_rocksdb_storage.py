@@ -1,5 +1,7 @@
 """
 Tests for RocksDB (LSM-tree) shard storage backend.
+
+Requires: pip install lsm-db
 """
 
 from __future__ import annotations
@@ -8,6 +10,8 @@ import os
 import tempfile
 
 import pytest
+
+lsm = pytest.importorskip("lsm", reason="lsm-db not installed")
 
 from src.ltp.storage.rocksdb import RocksDBShardStore
 
