@@ -522,12 +522,13 @@ class TestABIValidation:
 
             sol_item = contract_functions[name]
 
-            # Check input count and types match
-            py_inputs = [(p["name"], p["type"]) for p in py_item["inputs"]]
-            sol_inputs = [(p["name"], p["type"]) for p in sol_item["inputs"]]
-            assert py_inputs == sol_inputs, (
+            # Check input count and types match (compare types only —
+            # solc omits parameter names for public mapping getters)
+            py_types = [p["type"] for p in py_item["inputs"]]
+            sol_types = [p["type"] for p in sol_item["inputs"]]
+            assert py_types == sol_types, (
                 f"ABI mismatch for {name}: "
-                f"Python inputs={py_inputs}, Solidity inputs={sol_inputs}"
+                f"Python types={py_types}, Solidity types={sol_types}"
             )
 
 
