@@ -20,19 +20,22 @@ contract CrossChainForkTest is Test {
     bool baseAvailable;
 
     function setUp() public {
-        // Try creating forks — skip gracefully if RPC URLs not set
-        try vm.createFork(vm.envString("GSX_RPC_URL")) returns (uint256 forkId) {
-            gsxFork = forkId;
-            gsxAvailable = true;
-        } catch {
-            gsxAvailable = false;
+        // Use envOr to avoid revert when env vars are missing (CI)
+        string memory gsxRpc = vm.envOr("GSX_RPC_URL", string(""));
+        string memory baseRpc = vm.envOr("BASE_SEPOLIA_RPC_URL", string(""));
+
+        if (bytes(gsxRpc).length > 0) {
+            try vm.createFork(gsxRpc) returns (uint256 forkId) {
+                gsxFork = forkId;
+                gsxAvailable = true;
+            } catch {}
         }
 
-        try vm.createFork(vm.envString("BASE_SEPOLIA_RPC_URL")) returns (uint256 forkId) {
-            baseFork = forkId;
-            baseAvailable = true;
-        } catch {
-            baseAvailable = false;
+        if (bytes(baseRpc).length > 0) {
+            try vm.createFork(baseRpc) returns (uint256 forkId) {
+                baseFork = forkId;
+                baseAvailable = true;
+            } catch {}
         }
     }
 
