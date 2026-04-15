@@ -36,6 +36,10 @@ gateway = [
     "uvicorn[standard]>=0.22.0",
     "httpx>=0.24.0",
 ]
+federation = [
+    "httpx>=0.24.0",
+    "dnspython>=2.4.0",
+]
 cloud = [
     "boto3>=1.26.0",
 ]
@@ -67,6 +71,7 @@ dev = [
     "boto3>=1.26.0",
     "moto[kms]>=4.0.0",
     "py_ecc>=7.0.0",
+    "dnspython>=2.4.0",
 ]
 
 [project.scripts]

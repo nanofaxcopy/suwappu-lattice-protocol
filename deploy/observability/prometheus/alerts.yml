@@ -1,0 +1,158 @@
+groups:
+  - name: etp-node-health
+    interval: 30s
+    rules:
+      - alert: ETPNodeDown
+        expr: up{job="etp-nodes"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: node
+        annotations:
+          summary: "ETP node {{ $labels.node_id }} is down"
+          description: "No metrics scraped from {{ $labels.node_id }} ({{ $labels.region }}) for >2m."
+          runbook: "docs/OPERATOR_RUNBOOK.md#node-down"
+
+      - alert: ETPSTHPublishGapHigh
+        expr: etp_sth_publish_gap_seconds > 600
+        for: 5m
+        labels:
+          severity: critical
+          component: merkle-log
+        annotations:
+          summary: "STH publish gap exceeds 10m on {{ $labels.node_id }}"
+          description: "etp_sth_publish_gap_seconds={{ $value }}s. Signed Tree Heads are not being published — chain of custody is at risk."
+          runbook: "docs/OPERATOR_RUNBOOK.md#sth-publish-gap"
+
+      - alert: ETPSTHPublishGapWarning
+        expr: etp_sth_publish_gap_seconds > 180
+        for: 5m
+        labels:
+          severity: warning
+          component: merkle-log
+        annotations:
+          summary: "STH publish gap elevated on {{ $labels.node_id }}"
+          description: "etp_sth_publish_gap_seconds={{ $value }}s (threshold 180s)."
+
+      - alert: ETPAuditFailureRateHigh
+        expr: etp_audit_failure_rate > 0.02
+        for: 10m
+        labels:
+          severity: warning
+          component: audit
+        annotations:
+          summary: "Audit failure rate {{ $value | humanizePercentage }} on {{ $labels.node_id }}"
+          description: "Sustained PDP audit failures — indicates data loss, shard corruption, or byzantine peers."
+          runbook: "docs/OPERATOR_RUNBOOK.md#audit-failures"
+
+      - alert: ETPMaterializeFailures
+        expr: increase(etp_materialize_failure_total[10m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: protocol
+        annotations:
+          summary: "Materialization failures on {{ $labels.node_id }}"
+          description: "{{ $value }} failures in 10m. Users cannot reconstruct their entities."
+
+      - alert: ETPRest5xxRate
+        expr: rate(etp_rest_5xx_total[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: gateway
+        annotations:
+          summary: "REST 5xx rate >0.5/s on {{ $labels.node_id }}"
+          description: "Gateway is returning errors. Rate={{ $value }}/s."
+
+      - alert: ETPRestLatencyHigh
+        expr: histogram_quantile(0.99, rate(etp_rest_latency_seconds_bucket[5m])) > 1.0
+        for: 10m
+        labels:
+          severity: warning
+          component: gateway
+        annotations:
+          summary: "p99 REST latency >1s on {{ $labels.node_id }}"
+          description: "p99={{ $value }}s. Gateway is slow."
+
+      - alert: ETPKeyRotationFailure
+        expr: increase(etp_key_rotation_failures_total[1h]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: kms
+        annotations:
+          summary: "Key rotation failed on {{ $labels.node_id }}"
+          description: "KMS key rotation failed {{ $value }} time(s) in the last hour. Investigate KMS credentials and IAM policies."
+          runbook: "docs/OPERATOR_RUNBOOK.md#key-rotation-failure"
+
+  - name: etp-bridge
+    interval: 30s
+    rules:
+      - alert: ETPBridgeMessageAgeHigh
+        expr: etp_bridge_message_age_seconds > 3600
+        for: 10m
+        labels:
+          severity: critical
+          component: bridge
+        annotations:
+          summary: "Bridge message backlog >1h on {{ $labels.node_id }}"
+          description: "Oldest unfinalized bridge message is {{ $value }}s old. Cross-chain anchoring is stuck."
+          runbook: "docs/OPERATOR_RUNBOOK.md#bridge-stuck"
+
+      - alert: ETPBridgeFailures
+        expr: increase(etp_bridge_records_failed_total[1h]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          component: bridge
+        annotations:
+          summary: "Bridge failures elevated on {{ $labels.node_id }}"
+          description: "{{ $value }} bridge failures in the last hour."
+
+      - alert: ETPBridgeRetryQueueGrowing
+        expr: etp_bridge_retry_queue_size > 100
+        for: 15m
+        labels:
+          severity: warning
+          component: bridge
+        annotations:
+          summary: "Bridge retry queue backing up on {{ $labels.node_id }}"
+          description: "Queue size={{ $value }}. Upstream RPC may be unhealthy."
+
+  - name: etp-security
+    interval: 30s
+    rules:
+      - alert: ETPNonceViolation
+        expr: increase(etp_nonce_violation_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          component: security
+        annotations:
+          summary: "Nonce monotonicity violation on {{ $labels.node_id }}"
+          description: "{{ $value }} nonce replay / rewind attempt(s) detected. Possible active attack."
+          runbook: "docs/OPERATOR_RUNBOOK.md#nonce-violation"
+
+  - name: etp-network
+    interval: 30s
+    rules:
+      - alert: ETPGossipNoPeers
+        expr: rate(etp_gossip_peers_discovered_total[15m]) == 0
+        for: 15m
+        labels:
+          severity: warning
+          component: network
+        annotations:
+          summary: "No new peers discovered in 15m on {{ $labels.node_id }}"
+          description: "Gossip protocol may be isolated. Check seed peers and network connectivity."
+
+      - alert: ETPGossipHighTimeout
+        expr: rate(etp_gossip_peers_timed_out_total[10m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          component: network
+        annotations:
+          summary: "Gossip peer timeout rate elevated on {{ $labels.node_id }}"
+          description: "{{ $value }} timeouts/s — network degradation."

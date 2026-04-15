@@ -32,6 +32,10 @@ __all__ = [
     "DiscoveryService",
     "StaticDiscoveryService",
     "DNSDiscoveryService",
+    "DNSProvider",
+    "LocalCacheDNSProvider",
+    "Route53DNSProvider",
+    "CloudflareDNSProvider",
     "FederationAgreement",
     "FederationAuth",
     "FederationTransport",
@@ -591,55 +595,396 @@ class StaticDiscoveryService(DiscoveryService):
         return self._nirs.get(network_id)
 
 
+class DNSProvider(ABC):
+    """Abstract backend for publishing NIR records to DNS.
+
+    Implementations handle the provider-specific details of creating and
+    deleting TXT records. `query_txt` is optional — if a provider supports
+    local record lookup (e.g. for tests), it can return records directly
+    without traversing the real DNS hierarchy.
+    """
+
+    @abstractmethod
+    def publish_txt(self, name: str, value: str) -> bool:
+        """Publish a TXT record. Returns True on success."""
+        ...
+
+    @abstractmethod
+    def delete_txt(self, name: str) -> bool:
+        """Delete the TXT record at `name`. Returns True if removed."""
+        ...
+
+    def query_txt(self, name: str) -> list[str]:
+        """Return TXT record values for `name` — default: empty list.
+
+        Providers that can answer queries locally (e.g. in-process caches)
+        should override this. The `DNSDiscoveryService` calls it in addition
+        to the real-DNS path so records published to this provider remain
+        discoverable without hitting external resolvers.
+        """
+        return []
+
+
+class LocalCacheDNSProvider(DNSProvider):
+    """In-process DNS provider — stores TXT records in a dict.
+
+    The default backend for `DNSDiscoveryService`. Records published here
+    are visible to the same `DNSDiscoveryService` instance but NOT to
+    external DNS resolvers. Useful for tests and single-host deployments.
+    """
+
+    def __init__(self) -> None:
+        self._records: dict[str, list[str]] = {}
+
+    def publish_txt(self, name: str, value: str) -> bool:
+        self._records.setdefault(name, [])
+        if value not in self._records[name]:
+            self._records[name].append(value)
+        return True
+
+    def delete_txt(self, name: str) -> bool:
+        return self._records.pop(name, None) is not None
+
+    def query_txt(self, name: str) -> list[str]:
+        return list(self._records.get(name, []))
+
+
+class Route53DNSProvider(DNSProvider):
+    """AWS Route53 DNS provider.
+
+    Requires: boto3 and AWS credentials with
+    `route53:ChangeResourceRecordSets` on the hosted zone.
+
+    Usage:
+        provider = Route53DNSProvider(hosted_zone_id="Z1234EXAMPLE")
+        discovery = DNSDiscoveryService(domain="etp.example.com", provider=provider)
+    """
+
+    def __init__(self, hosted_zone_id: str, ttl: int = 300) -> None:
+        self._hosted_zone_id = hosted_zone_id
+        self._ttl = ttl
+
+    def _client(self):
+        try:
+            import boto3  # type: ignore
+        except ImportError as e:
+            raise RuntimeError(
+                "Route53DNSProvider requires boto3: pip install 'ltp[cloud]'"
+            ) from e
+        return boto3.client("route53")
+
+    def _change(self, action: str, name: str, values: list[str]) -> bool:
+        client = self._client()
+        # RFC 1035: TXT values are quoted, max 255 bytes per string.
+        chunks = []
+        for v in values:
+            encoded = v.encode("utf-8")
+            pieces = [encoded[i:i + 255] for i in range(0, len(encoded), 255)]
+            quoted = " ".join('"' + p.decode("utf-8", "replace").replace('"', r"\"") + '"' for p in pieces)
+            chunks.append({"Value": quoted})
+        try:
+            client.change_resource_record_sets(
+                HostedZoneId=self._hosted_zone_id,
+                ChangeBatch={"Changes": [{
+                    "Action": action,
+                    "ResourceRecordSet": {
+                        "Name": name,
+                        "Type": "TXT",
+                        "TTL": self._ttl,
+                        "ResourceRecords": chunks,
+                    },
+                }]},
+            )
+            return True
+        except Exception:
+            return False
+
+    def publish_txt(self, name: str, value: str) -> bool:
+        return self._change("UPSERT", name, [value])
+
+    def delete_txt(self, name: str) -> bool:
+        # Route53 DELETE requires the exact current record set.
+        # We look it up, then delete — best-effort.
+        try:
+            client = self._client()
+            resp = client.list_resource_record_sets(
+                HostedZoneId=self._hosted_zone_id, StartRecordName=name, StartRecordType="TXT",
+            )
+            for rr in resp.get("ResourceRecordSets", []):
+                if rr.get("Name") == name and rr.get("Type") == "TXT":
+                    client.change_resource_record_sets(
+                        HostedZoneId=self._hosted_zone_id,
+                        ChangeBatch={"Changes": [{"Action": "DELETE", "ResourceRecordSet": rr}]},
+                    )
+                    return True
+        except Exception:
+            return False
+        return False
+
+
+class CloudflareDNSProvider(DNSProvider):
+    """Cloudflare DNS provider via the v4 HTTP API.
+
+    Requires: httpx and a Cloudflare API token with the "DNS:Edit"
+    permission scoped to the target zone.
+    """
+
+    API_BASE = "https://api.cloudflare.com/client/v4"
+
+    def __init__(self, zone_id: str, api_token: str, ttl: int = 300) -> None:
+        self._zone_id = zone_id
+        self._api_token = api_token
+        self._ttl = ttl
+
+    def _headers(self) -> dict[str, str]:
+        return {
+            "Authorization": f"Bearer {self._api_token}",
+            "Content-Type": "application/json",
+        }
+
+    def _client(self):
+        try:
+            import httpx  # type: ignore
+        except ImportError as e:
+            raise RuntimeError(
+                "CloudflareDNSProvider requires httpx: pip install 'ltp[federation]'"
+            ) from e
+        return httpx
+
+    def publish_txt(self, name: str, value: str) -> bool:
+        httpx_mod = self._client()
+        url = f"{self.API_BASE}/zones/{self._zone_id}/dns_records"
+        try:
+            resp = httpx_mod.post(
+                url, headers=self._headers(),
+                json={"type": "TXT", "name": name, "content": value, "ttl": self._ttl},
+                timeout=10.0,
+            )
+            return resp.status_code in (200, 201) and resp.json().get("success", False)
+        except Exception:
+            return False
+
+    def delete_txt(self, name: str) -> bool:
+        httpx_mod = self._client()
+        try:
+            # Look up the record id first.
+            list_url = f"{self.API_BASE}/zones/{self._zone_id}/dns_records"
+            resp = httpx_mod.get(
+                list_url, headers=self._headers(),
+                params={"type": "TXT", "name": name}, timeout=10.0,
+            )
+            if resp.status_code != 200:
+                return False
+            deleted = False
+            for rec in resp.json().get("result", []):
+                rec_id = rec.get("id")
+                if not rec_id:
+                    continue
+                d = httpx_mod.delete(
+                    f"{self.API_BASE}/zones/{self._zone_id}/dns_records/{rec_id}",
+                    headers=self._headers(), timeout=10.0,
+                )
+                if d.status_code == 200:
+                    deleted = True
+            return deleted
+        except Exception:
+            return False
+
+
 class DNSDiscoveryService(DiscoveryService):
     """DNS TXT record discovery for Network Identity Records.
 
-    Uses real DNS TXT record lookups via socket.getaddrinfo for discovery.
-    Falls back to an in-memory cache for records published locally.
-    For production publish, integrates with DNS provider APIs (Route53, Cloudflare).
+    `publish()` routes through a pluggable `DNSProvider`
+    (LocalCacheDNSProvider by default). `discover()` and `resolve()`
+    consult both real DNS (via dnspython) and the provider's local
+    cache, deduplicated by `network_id` and filtered to verified
+    ML-DSA signatures.
 
-    TXT record format: _etp-nir.{domain} → JSON-serialized NIR
+    TXT record format:
+      `_etp-nir.{domain}` → JSON NIR (hex-encoded byte fields, v1 schema)
+
+    Multiple NIRs at the same domain produce multiple TXT records; all
+    are returned by `discover(domain)`.
+
+    Note: PQC operator keys are large (ML-DSA-65 ≈ 2KB). For public DNS
+    deployments, operators should use a dedicated subdomain per NIR
+    (e.g. `{network_id[:8]}._etp-nir.{domain}`) to stay within the 4KB
+    EDNS0 response limit.
     """
 
-    def __init__(self, domain: str = "etp.local") -> None:
+    TXT_PREFIX = "_etp-nir"
+    SCHEMA_VERSION = 1
+
+    def __init__(
+        self,
+        domain: str = "etp.local",
+        provider: Optional[DNSProvider] = None,
+    ) -> None:
         self._domain = domain
+        self._provider = provider if provider is not None else LocalCacheDNSProvider()
         self._local_cache: dict[str, NetworkIdentityRecord] = {}
         self._domain_index: dict[str, list[str]] = {}
 
+    # ------------------------------------------------------------------
+    # Serialization
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def _serialize_nir(cls, nir: NetworkIdentityRecord) -> str:
+        """Serialize an NIR to a compact JSON string (hex-encoded bytes)."""
+        import json
+        return json.dumps({
+            "v": cls.SCHEMA_VERSION,
+            "network_id": nir.network_id,
+            "operator_vk": nir.operator_vk.hex(),
+            "genesis_sth_root": nir.genesis_sth_root.hex(),
+            "genesis_sth_sequence": nir.genesis_sth_sequence,
+            "display_name": nir.display_name,
+            "discovery_endpoint": nir.discovery_endpoint,
+            "created_at": nir.created_at,
+            "signature": nir.signature.hex(),
+        }, separators=(",", ":"))
+
+    @classmethod
+    def _deserialize_nir(cls, txt: str) -> Optional[NetworkIdentityRecord]:
+        """Parse a TXT record into an NIR. Returns None on malformed input."""
+        import json
+        try:
+            data = json.loads(txt)
+            if data.get("v") != cls.SCHEMA_VERSION:
+                return None
+            return NetworkIdentityRecord(
+                network_id=data["network_id"],
+                operator_vk=bytes.fromhex(data["operator_vk"]),
+                genesis_sth_root=bytes.fromhex(data["genesis_sth_root"]),
+                genesis_sth_sequence=int(data["genesis_sth_sequence"]),
+                display_name=data["display_name"],
+                discovery_endpoint=data["discovery_endpoint"],
+                created_at=float(data["created_at"]),
+                signature=bytes.fromhex(data["signature"]),
+            )
+        except (ValueError, KeyError, TypeError):
+            return None
+
+    # ------------------------------------------------------------------
+    # DNS resolution
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _query_real_dns(name: str, timeout: float = 5.0) -> list[str]:
+        """Query TXT records at `name` via dnspython. Returns [] on failure."""
+        try:
+            import dns.resolver  # type: ignore
+            import dns.exception  # type: ignore
+        except ImportError:
+            return []
+        try:
+            answers = dns.resolver.resolve(name, "TXT", lifetime=timeout)
+        except Exception:
+            return []
+        out: list[str] = []
+        for rdata in answers:
+            # TXT rdata exposes `.strings` as a list of up-to-255-byte bytes
+            # chunks; join them for chunked records.
+            try:
+                joined = b"".join(rdata.strings).decode("utf-8", errors="replace")
+            except Exception:
+                continue
+            out.append(joined)
+        return out
+
+    def _fqdn(self, domain: str) -> str:
+        return f"{self.TXT_PREFIX}.{domain}"
+
+    def _txt_records_for(self, domain: str) -> list[str]:
+        """Collect TXT records from both the provider and real DNS."""
+        name = self._fqdn(domain)
+        records: list[str] = []
+        records.extend(self._provider.query_txt(name))
+        records.extend(self._query_real_dns(name))
+        return records
+
+    # ------------------------------------------------------------------
+    # Publish
+    # ------------------------------------------------------------------
+
     def publish(self, nir: NetworkIdentityRecord) -> bool:
-        """Publish a NIR. Stores locally and would push to DNS provider in production."""
+        """Publish a NIR via the configured DNS provider.
+
+        Also caches locally so subsequent `resolve()` / `discover()` calls
+        succeed without a DNS round trip.
+        """
         self._local_cache[nir.network_id] = nir
         domain = nir.discovery_endpoint or self._domain
         self._domain_index.setdefault(domain, [])
         if nir.network_id not in self._domain_index[domain]:
             self._domain_index[domain].append(nir.network_id)
-        return True
+
+        txt = self._serialize_nir(nir)
+        return self._provider.publish_txt(self._fqdn(domain), txt)
+
+    # ------------------------------------------------------------------
+    # Discover
+    # ------------------------------------------------------------------
 
     def discover(self, query: str = "") -> list[NetworkIdentityRecord]:
-        """Discover NIRs. Checks local cache and attempts DNS TXT lookup."""
-        # First check local cache
-        results = list(self._local_cache.values())
+        """Discover NIRs via provider + real DNS, deduped and verified.
 
-        # Attempt real DNS TXT lookup for the configured domain
-        try:
-            import socket
-            answers = socket.getaddrinfo(
-                f"_etp-nir.{query or self._domain}", None,
-                type=socket.SOCK_STREAM,
-            )
-            # DNS TXT records would be parsed here in production
-            # For now, this validates DNS reachability
-        except (socket.gaierror, OSError):
-            pass  # DNS lookup failed — use local cache only
+        If `query` is empty, returns all known NIRs. Otherwise, interprets
+        `query` as either a domain to query directly, or a substring to
+        match against display_name / discovery_endpoint in the local cache.
+        """
+        # Always include local-cache hits for backward compatibility.
+        seen: dict[str, NetworkIdentityRecord] = dict(self._local_cache)
 
         if query:
-            results = [n for n in results
-                       if query in (n.discovery_endpoint or "") or query in n.display_name]
+            domains = [query] + list(self._domain_index.keys())
+        else:
+            domains = list(self._domain_index.keys()) or [self._domain]
+
+        for d in domains:
+            for txt in self._txt_records_for(d):
+                nir = self._deserialize_nir(txt)
+                if nir is not None and nir.verify():
+                    seen[nir.network_id] = nir
+
+        results = list(seen.values())
+        if query:
+            filtered = [
+                n for n in results
+                if query in (n.discovery_endpoint or "") or query in n.display_name
+            ]
+            # Substring match wins when we have any hits; otherwise
+            # fall through to all (domain query may have returned records).
+            if filtered:
+                return filtered
         return results
 
+    # ------------------------------------------------------------------
+    # Resolve
+    # ------------------------------------------------------------------
+
     def resolve(self, network_id: str) -> Optional[NetworkIdentityRecord]:
-        """Resolve a network_id to its NIR."""
-        return self._local_cache.get(network_id)
+        """Resolve a network_id to its NIR.
+
+        Checks the local cache first, then queries all known domains via
+        the provider and real DNS. Caches verified hits locally.
+        """
+        hit = self._local_cache.get(network_id)
+        if hit is not None:
+            return hit
+
+        domains = list(self._domain_index.keys()) or [self._domain]
+        for d in domains:
+            for txt in self._txt_records_for(d):
+                nir = self._deserialize_nir(txt)
+                if nir is None or nir.network_id != network_id:
+                    continue
+                if not nir.verify():
+                    continue
+                self._local_cache[nir.network_id] = nir
+                return nir
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -901,95 +1246,10 @@ class InMemoryFederationTransport(FederationTransport):
         }
 
 
-class HttpFederationTransport(FederationTransport):
-    """Real HTTP-based federation transport using httpx.
-
-    Sends authenticated requests to remote network endpoints for
-    cross-network shard fetching and entity resolution.
-
-    Requires: httpx (included in [gateway] extras).
-    """
-
-    def __init__(self, timeout: float = 30.0) -> None:
-        try:
-            import httpx
-            self._client = httpx.Client(timeout=timeout)
-        except ImportError:
-            raise RuntimeError(
-                "HttpFederationTransport requires httpx. "
-                "Install with: pip install 'ltp[gateway]'"
-            )
-
-    def _auth_headers(self, auth: FederationAuth) -> dict[str, str]:
-        """Build HTTP authorization headers from FederationAuth."""
-        return {
-            "X-ETP-Federation-Source": auth.source_network_id,
-            "X-ETP-Federation-Target": auth.target_network_id,
-            "X-ETP-Federation-Signature": auth.agreement_signature.hex()
-            if auth.agreement_signature else "",
-        }
-
-    @staticmethod
-    def _require_https(endpoint: str) -> None:
-        """Reject non-HTTPS endpoints to prevent credential leakage."""
-        if not endpoint.startswith("https://"):
-            raise ValueError(
-                f"Federation requires HTTPS. Refused insecure endpoint: {endpoint[:40]}"
-            )
-
-    def fetch_shards(
-        self, endpoint: str, entity_id: str,
-        shard_indices: list[int], auth: FederationAuth,
-    ) -> dict[int, bytes]:
-        """Fetch shards from a remote network via HTTP POST."""
-        import httpx
-        import base64
-
-        self._require_https(endpoint)
-        if not auth.verify():
-            return {}
-
-        try:
-            resp = self._client.post(
-                f"{endpoint}/v1/federation/shards",
-                json={
-                    "entity_id": entity_id,
-                    "shard_indices": shard_indices,
-                },
-                headers=self._auth_headers(auth),
-            )
-            if resp.status_code != 200:
-                return {}
-
-            data = resp.json()
-            return {
-                int(k): base64.b64decode(v)
-                for k, v in data.get("shards", {}).items()
-            }
-        except (httpx.HTTPError, Exception):
-            return {}
-
-    def query_entity(
-        self, endpoint: str, entity_id: str, auth: FederationAuth,
-    ) -> Optional[dict]:
-        """Query a remote network for entity metadata via HTTP GET."""
-        import httpx
-
-        self._require_https(endpoint)
-        if not auth.verify():
-            return None
-
-        try:
-            resp = self._client.get(
-                f"{endpoint}/v1/federation/resolve",
-                params={"entity_id": entity_id},
-                headers=self._auth_headers(auth),
-            )
-            if resp.status_code != 200:
-                return None
-            return resp.json()
-        except (httpx.HTTPError, Exception):
-            return None
+# The real HTTP federation transport lives in `src/ltp/federation_http.py`
+# as `HTTPFederationTransport` — imported separately so `federation.py` stays
+# network-agnostic. See that module for the production client with retries,
+# connection pooling, and auth header wiring.
 
 
 # ---------------------------------------------------------------------------

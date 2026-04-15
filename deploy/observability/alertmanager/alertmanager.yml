@@ -1,0 +1,52 @@
+global:
+  resolve_timeout: 5m
+  # Uncomment and set for Slack integration:
+  # slack_api_url: "https://hooks.slack.com/services/REPLACE/WITH/WEBHOOK"
+
+route:
+  group_by: ["alertname", "node_id", "severity"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: default
+  routes:
+    - matchers:
+        - severity="critical"
+      receiver: pagerduty-critical
+      continue: true
+    - matchers:
+        - severity="warning"
+      receiver: slack-warnings
+
+receivers:
+  - name: default
+    # Logs-only receiver — useful for development
+    webhook_configs:
+      - url: "http://localhost:5001/alerts"
+        send_resolved: true
+
+  - name: pagerduty-critical
+    # Uncomment and set PagerDuty integration key:
+    # pagerduty_configs:
+    #   - service_key: "REPLACE_WITH_PAGERDUTY_KEY"
+    #     description: "{{ .GroupLabels.alertname }} on {{ .GroupLabels.node_id }}"
+    webhook_configs:
+      - url: "http://localhost:5001/alerts/critical"
+        send_resolved: true
+
+  - name: slack-warnings
+    # Uncomment and configure Slack channel:
+    # slack_configs:
+    #   - channel: "#etp-alerts"
+    #     title: "{{ .GroupLabels.alertname }}"
+    #     text: "{{ range .Alerts }}{{ .Annotations.summary }}\n{{ .Annotations.description }}\n{{ end }}"
+    webhook_configs:
+      - url: "http://localhost:5001/alerts/warnings"
+        send_resolved: true
+
+inhibit_rules:
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    equal: ["alertname", "node_id"]
