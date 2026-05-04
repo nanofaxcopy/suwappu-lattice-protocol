@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Callable
+from typing import Callable, Optional
 
 from .config import GatewayVMConfig
 from .events import BridgeEvent
+from .finality import FinalityWatcher
 from .replay import ReplayDB
 
 
@@ -25,11 +26,16 @@ class EventValidator:
         replay_db: ReplayDB,
         get_block_number: Callable[[], int],
         is_signer_authorized: Callable[[], bool],
+        finality_watcher: Optional[FinalityWatcher] = None,
     ) -> None:
         self._config = config
         self._replay_db = replay_db
         self._get_block_number = get_block_number
         self._is_signer_authorized = is_signer_authorized
+        self._finality = finality_watcher or FinalityWatcher(
+            finality_depth=config.finality_depth,
+            get_block_number=get_block_number,
+        )
 
     def validate(self, event: BridgeEvent) -> tuple[bool, str]:
         """Run all validation checks. Returns (True, "") or (False, reason)."""
@@ -56,13 +62,17 @@ class EventValidator:
         if not event.tx_hash:
             return False, "empty transaction hash"
 
-        # 5-6. Finality depth threshold met
-        current_block = self._get_block_number()
-        depth = current_block - event.block_number
-        if depth < self._config.finality_depth:
+        # 5-6. Finality depth threshold met (delegates to FinalityWatcher)
+        is_final, depth, required = self._finality.check(event.block_number)
+        if not is_final:
+            if depth < 0:
+                return False, (
+                    f"reorg detected: event block {event.block_number} "
+                    f"is {abs(depth)} blocks ahead of chain head"
+                )
             return False, (
                 f"insufficient finality: depth {depth}, "
-                f"required {self._config.finality_depth}"
+                f"required {required}"
             )
 
         # 7. Replay status — event not already processed
