@@ -35,9 +35,8 @@ __all__ = [
     "DOMAIN_NODE_HANDSHAKE",
     "DOMAIN_JWT_TOKEN",
     "DOMAIN_PEER_GOSSIP",
-    # Legacy tags
-    "LEGACY_COMMIT_V1",
-    "LEGACY_RECORD_V1",
+    "DOMAIN_GATEWAY_ATTEST",
+    "DOMAIN_EXTERNAL_EVENT",
     # Functions
     "domain_hash",
     "domain_hash_bytes",
@@ -75,10 +74,8 @@ DOMAIN_FED_AGREEMENT    = b"GSX-LTP:fed-agreement:v1\x00"
 DOMAIN_JWT_TOKEN        = b"GSX-LTP:jwt-token:v1\x00"
 DOMAIN_PEER_GOSSIP      = b"GSX-LTP:peer-gossip:v1\x00"
 DOMAIN_ZK_TRANSFER      = b"GSX-LTP:zk-transfer:v1\x00"
-
-# Legacy tags (kept for backward compatibility with existing signable_payload())
-LEGACY_COMMIT_V1 = b"LTP-COMMIT-v1\x00"
-LEGACY_RECORD_V1 = b"LTP-RECORD-v1\x00"
+DOMAIN_GATEWAY_ATTEST   = b"GSX-LTP:gateway-attest:v1\x00"
+DOMAIN_EXTERNAL_EVENT   = b"GSX-LTP:external-event:v1\x00"
 
 
 # ---------------------------------------------------------------------------
@@ -111,8 +108,8 @@ _ALL_TAGS: dict[str, bytes] = {
     "DOMAIN_JWT_TOKEN": DOMAIN_JWT_TOKEN,
     "DOMAIN_PEER_GOSSIP": DOMAIN_PEER_GOSSIP,
     "DOMAIN_ZK_TRANSFER": DOMAIN_ZK_TRANSFER,
-    "LEGACY_COMMIT_V1": LEGACY_COMMIT_V1,
-    "LEGACY_RECORD_V1": LEGACY_RECORD_V1,
+    "DOMAIN_GATEWAY_ATTEST": DOMAIN_GATEWAY_ATTEST,
+    "DOMAIN_EXTERNAL_EVENT": DOMAIN_EXTERNAL_EVENT,
 }
 
 # Verify no byte-level collisions at import time

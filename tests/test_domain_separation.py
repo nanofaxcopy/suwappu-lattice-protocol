@@ -7,7 +7,6 @@ from src.ltp.domain import (
     DOMAIN_STH_SIGN, DOMAIN_SHARD_NONCE, DOMAIN_APPROVAL_RECEIPT,
     DOMAIN_ANCHOR_DIGEST, DOMAIN_SIGNED_ENVELOPE, DOMAIN_SIGNER_POLICY,
     DOMAIN_LATTICE_KEY, DOMAIN_BRIDGE_MSG,
-    LEGACY_COMMIT_V1, LEGACY_RECORD_V1,
     _ALL_TAGS,
     domain_hash, domain_hash_bytes,
     domain_sign, domain_verify,
@@ -45,12 +44,7 @@ class TestTagRegistry:
             # Should contain version marker
             assert b":v" in tag, f"{name} missing version marker"
 
-    def test_legacy_tags_preserved(self):
-        assert LEGACY_COMMIT_V1 == b"LTP-COMMIT-v1\x00"
-        assert LEGACY_RECORD_V1 == b"LTP-RECORD-v1\x00"
-
     def test_tag_count(self):
-        # 25 new + 2 legacy = 27 total
         assert len(_ALL_TAGS) == 27
 
 
@@ -117,6 +111,18 @@ class TestDomainSignVerify:
         data = b"original message"
         sig = domain_sign(DOMAIN_COMMIT_SIGN, kp.sk, data)
         assert not domain_verify(DOMAIN_COMMIT_SIGN, kp.vk, b"tampered", sig)
+
+
+class TestGatewayVMDomainTags:
+    """Verify gateway VM domain tags exist and follow conventions."""
+
+    def test_gateway_attest_domain_tag_exists(self):
+        from src.ltp.domain import DOMAIN_GATEWAY_ATTEST
+        assert DOMAIN_GATEWAY_ATTEST == b"GSX-LTP:gateway-attest:v1\x00"
+
+    def test_external_event_domain_tag_exists(self):
+        from src.ltp.domain import DOMAIN_EXTERNAL_EVENT
+        assert DOMAIN_EXTERNAL_EVENT == b"GSX-LTP:external-event:v1\x00"
 
 
 class TestSignerFingerprint:
