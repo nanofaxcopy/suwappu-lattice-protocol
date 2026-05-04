@@ -14,7 +14,7 @@ from typing import Optional
 
 from src.ltp.commitment import CommitmentLog
 from src.ltp.keypair import KeyPair
-from src.ltp.primitives import H_bytes, internal_hash
+from src.ltp.primitives import canonical_hash_bytes, internal_hash
 
 from .clock import EventQueue, EventType, SimClock
 from .message import Message, MessageBus, MessageType
@@ -192,7 +192,7 @@ class NetworkSimulator:
             raise ValueError("No nodes in the network")
 
         placement_key = f"{entity_id}:{shard_index}"
-        h = int.from_bytes(H_bytes(placement_key.encode()), "big")
+        h = int.from_bytes(canonical_hash_bytes(placement_key.encode()), "big")
 
         online_nodes = [n for n in self._nodes.values() if n.online]
         if not online_nodes:
@@ -200,7 +200,7 @@ class NetworkSimulator:
 
         # Sort nodes deterministically by hash distance
         def node_score(node: SimNode) -> int:
-            node_hash = int.from_bytes(H_bytes(node.node_id.encode()), "big")
+            node_hash = int.from_bytes(canonical_hash_bytes(node.node_id.encode()), "big")
             return (h ^ node_hash) % (2**256)
 
         sorted_nodes = sorted(online_nodes, key=node_score)

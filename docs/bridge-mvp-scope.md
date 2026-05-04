@@ -156,8 +156,11 @@ src/ltp/bridge/
 ├── message.py           # BridgeMessage, BridgeCommitment, RelayPacket
 ├── anchor.py            # L1Anchor — source chain commitment
 ├── relayer.py           # Relayer — cross-chain sealed key transport
-├── materializer.py      # L2Materializer — dest chain verify + reconstruct
-└── nonce.py             # NonceTracker — per-sender monotonic nonce registry
+└── materializer.py      # L2Materializer — dest chain verify + reconstruct
+
+# Monotonic sequencing lives in src/ltp/sequencing.py::SequenceTracker
+# (VK-fingerprint keyed, chain-bound, temporal expiry — supersedes the
+# old bridge/nonce.py which has been removed)
 
 tests/
 └── test_bridge.py       # End-to-end: lock → relay → verify → mint

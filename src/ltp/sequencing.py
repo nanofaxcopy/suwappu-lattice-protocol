@@ -1,7 +1,7 @@
 """
 Sequence tracker — per-signer monotonic sequencing with chain binding and expiry.
 
-Replaces the simpler NonceTracker from bridge/nonce.py with richer semantics:
+Semantics:
   - Per-signer (by VK fingerprint) monotonic sequence enforcement
   - Chain binding: receipts are rejected if target_chain_id doesn't match
   - Temporal expiry: receipts with past valid_until are rejected

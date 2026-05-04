@@ -21,7 +21,7 @@ from src.ltp.entity import Entity
 from src.ltp.erasure import ErasureCoder
 from src.ltp.keypair import KeyPair
 from src.ltp.lattice import LatticeKey
-from src.ltp.primitives import H, MLDSA
+from src.ltp.primitives import canonical_hash, MLDSA
 from src.ltp.shards import ShardEncryptor
 
 if TYPE_CHECKING:
@@ -139,7 +139,7 @@ class SimClient:
         max_delivery_time = 0.0
 
         for i, enc_shard in enumerate(encrypted_shards):
-            shard_hash = H(enc_shard + entity_id.encode() + struct.pack('>I', i))
+            shard_hash = canonical_hash(enc_shard + entity_id.encode() + struct.pack('>I', i))
             shard_hashes.append(shard_hash)
 
             target_nodes = sim.placement(entity_id, i, replicas)
@@ -177,9 +177,9 @@ class SimClient:
         metrics.shard_distribution_ms = sim.clock.now - dist_start
 
         # 5. Build and sign commitment record
-        shard_map_root = H(''.join(shard_hashes).encode())
-        content_hash = H(content)
-        shape_hash = H(shape.encode())
+        shard_map_root = canonical_hash(''.join(shard_hashes).encode())
+        content_hash = canonical_hash(content)
+        shape_hash = canonical_hash(shape.encode())
 
         record = CommitmentRecord(
             entity_id=entity_id,
@@ -249,7 +249,7 @@ class SimClient:
         if record is None or cek is None:
             raise ValueError(f"Entity {entity_id} not committed by this client")
 
-        commitment_ref = H(json.dumps(record.to_dict(), sort_keys=True).encode())
+        commitment_ref = canonical_hash(json.dumps(record.to_dict(), sort_keys=True).encode())
 
         key = LatticeKey(
             entity_id=entity_id,
@@ -338,7 +338,7 @@ class SimClient:
 
         # 3. Verify commitment reference
         verify_start = sim.clock.now
-        record_ref = H(json.dumps(record.to_dict(), sort_keys=True).encode())
+        record_ref = canonical_hash(json.dumps(record.to_dict(), sort_keys=True).encode())
         if record_ref != key.commitment_ref:
             metrics.success = False
             metrics.failure_reason = "commitment_ref_mismatch"
@@ -420,7 +420,7 @@ class SimClient:
 
         # 7. Verify EntityID
         verify_start = sim.clock.now
-        expected_entity_id = H(
+        expected_entity_id = canonical_hash(
             entity_content
             + record.shape.encode()
             + struct.pack('>d', record.timestamp)

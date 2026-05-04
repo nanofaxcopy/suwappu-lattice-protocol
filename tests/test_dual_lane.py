@@ -9,7 +9,6 @@ Covers:
   - CryptoLane enum classification
   - Full protocol round-trip with dual-lane profile
   - Cross-lane determinism (same input, different algorithms → different output)
-  - H()/H_bytes() backward compatibility (delegate to canonical lane)
 """
 
 import os
@@ -24,8 +23,6 @@ from src.ltp.primitives import (
     canonical_hash_bytes,
     get_compliance_strict,
     get_security_profile,
-    H,
-    H_bytes,
     internal_hash,
     internal_hash_bytes,
     set_compliance_strict,
@@ -125,29 +122,6 @@ class TestCrossLaneDeterminism:
 
 
 # ---------------------------------------------------------------------------
-# H() / H_bytes() backward compatibility
-# ---------------------------------------------------------------------------
-
-class TestDeprecatedWrappers:
-    def test_H_delegates_to_canonical(self):
-        data = b"backward compat"
-        assert H(data) == canonical_hash(data)
-
-    def test_H_bytes_delegates_to_canonical(self):
-        data = b"backward compat bytes"
-        assert H_bytes(data) == canonical_hash_bytes(data)
-
-    def test_H_returns_sha3_prefix(self):
-        result = H(b"test")
-        assert result.startswith("sha3-256:")
-
-    def test_H_bytes_returns_32_bytes(self):
-        result = H_bytes(b"test")
-        assert isinstance(result, bytes)
-        assert len(result) == 32
-
-
-# ---------------------------------------------------------------------------
 # Compliance strict mode
 # ---------------------------------------------------------------------------
 
@@ -231,14 +205,6 @@ class TestSecurityProfileDualLane:
         p = SecurityProfile.level5()
         assert p.canonical_hash_fn == HashFunction.SHA_384
         assert p.level == 5
-
-    def test_hash_fn_backward_compat_property(self):
-        p = SecurityProfile(level=3, canonical_hash=HashFunction.SHA_384)
-        assert p.hash_fn == HashFunction.SHA_384
-
-    def test_hash_fn_init_kwarg_sets_canonical(self):
-        p = SecurityProfile(level=3, hash_fn=HashFunction.SHA_512)
-        assert p.canonical_hash_fn == HashFunction.SHA_512
 
     def test_label_includes_both_lanes(self):
         p = SecurityProfile.defi()

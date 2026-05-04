@@ -36,7 +36,7 @@ from src.ltp.merkle_log.tree import (
     _verify_inclusion,
 )
 from src.ltp import KeyPair
-from src.ltp.primitives import H_bytes
+from src.ltp.primitives import canonical_hash_bytes
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +67,7 @@ class TestMerkleTree:
     def test_empty_tree_root_is_canonical(self):
         t = MerkleTree()
         assert t.size == 0
-        assert t.root() == H_bytes(b'')
+        assert t.root() == canonical_hash_bytes(b'')
 
     def test_single_leaf_root_equals_leaf_hash(self):
         t = MerkleTree()
@@ -102,7 +102,7 @@ class TestMerkleTree:
         original_root = t.root()
 
         # Directly modify an internal leaf (simulating storage tampering)
-        t._leaves[3] = H_bytes(b"tampered")
+        t._leaves[3] = canonical_hash_bytes(b"tampered")
         assert t.root() != original_root
 
     def test_root_all_sizes_1_to_20(self):
@@ -181,7 +181,7 @@ class TestInclusionProof:
         proof = InclusionProof(
             leaf_index=0, tree_size=1, audit_path=[], root_hash=root
         )
-        wrong_root = H_bytes(b"not-the-root")
+        wrong_root = canonical_hash_bytes(b"not-the-root")
         assert not proof.verify(b"record", wrong_root)
 
     def test_tampered_audit_path_fails(self):
@@ -197,7 +197,7 @@ class TestInclusionProof:
         )
         # Replace one sibling with garbage
         tampered_path = list(proof.audit_path)
-        tampered_path[0] = H_bytes(b"garbage")
+        tampered_path[0] = canonical_hash_bytes(b"garbage")
         tampered_proof = InclusionProof(
             leaf_index=0, tree_size=t.size, audit_path=tampered_path, root_hash=root
         )
@@ -231,7 +231,7 @@ class TestInclusionProof:
 class TestSignedTreeHead:
 
     def test_sign_and_verify(self, operator_kp):
-        root = H_bytes(b"some-root")
+        root = canonical_hash_bytes(b"some-root")
         sth = SignedTreeHead.sign(
             sequence=0,
             tree_size=42,
@@ -242,18 +242,18 @@ class TestSignedTreeHead:
         assert sth.verify()
 
     def test_tampered_root_fails(self, operator_kp):
-        root = H_bytes(b"real-root")
+        root = canonical_hash_bytes(b"real-root")
         sth = SignedTreeHead.sign(
             sequence=0, tree_size=10, root_hash=root,
             operator_vk=operator_kp.vk, operator_sk=operator_kp.sk,
         )
         # Flip root hash
         import dataclasses
-        tampered = dataclasses.replace(sth, root_hash=H_bytes(b"fake-root"))
+        tampered = dataclasses.replace(sth, root_hash=canonical_hash_bytes(b"fake-root"))
         assert not tampered.verify()
 
     def test_tampered_tree_size_fails(self, operator_kp):
-        root = H_bytes(b"root")
+        root = canonical_hash_bytes(b"root")
         sth = SignedTreeHead.sign(
             sequence=0, tree_size=5, root_hash=root,
             operator_vk=operator_kp.vk, operator_sk=operator_kp.sk,
@@ -263,7 +263,7 @@ class TestSignedTreeHead:
         assert not tampered.verify()
 
     def test_tampered_sequence_fails(self, operator_kp):
-        root = H_bytes(b"root")
+        root = canonical_hash_bytes(b"root")
         sth = SignedTreeHead.sign(
             sequence=3, tree_size=5, root_hash=root,
             operator_vk=operator_kp.vk, operator_sk=operator_kp.sk,
@@ -273,7 +273,7 @@ class TestSignedTreeHead:
         assert not tampered.verify()
 
     def test_different_operators_produce_different_sths(self, operator_kp, operator_b_kp):
-        root = H_bytes(b"same-root")
+        root = canonical_hash_bytes(b"same-root")
         sth_a = SignedTreeHead.sign(
             sequence=0, tree_size=1, root_hash=root,
             operator_vk=operator_kp.vk, operator_sk=operator_kp.sk,
@@ -366,8 +366,8 @@ class TestEquivocation:
         Two valid STHs at the same sequence with different roots constitute a
         cryptographic equivocation proof.  detect_equivocation() must return True.
         """
-        root_a = H_bytes(b"honest-root")
-        root_b = H_bytes(b"forked-root")
+        root_a = canonical_hash_bytes(b"honest-root")
+        root_b = canonical_hash_bytes(b"forked-root")
 
         sth_a = SignedTreeHead.sign(
             sequence=5, tree_size=10, root_hash=root_a,
@@ -385,20 +385,20 @@ class TestEquivocation:
 
     def test_consistent_sths_not_equivocation(self, operator_kp):
         """Different sequence numbers → not equivocation (just progress)."""
-        root = H_bytes(b"root")
+        root = canonical_hash_bytes(b"root")
         sth_0 = SignedTreeHead.sign(
             sequence=0, tree_size=5, root_hash=root,
             operator_vk=operator_kp.vk, operator_sk=operator_kp.sk,
         )
         sth_1 = SignedTreeHead.sign(
-            sequence=1, tree_size=6, root_hash=H_bytes(b"new-root"),
+            sequence=1, tree_size=6, root_hash=canonical_hash_bytes(b"new-root"),
             operator_vk=operator_kp.vk, operator_sk=operator_kp.sk,
         )
         assert not MerkleLog.detect_equivocation(sth_0, sth_1)
 
     def test_same_root_not_equivocation(self, operator_kp):
         """Same root at same sequence is redundant but not a fork."""
-        root = H_bytes(b"root")
+        root = canonical_hash_bytes(b"root")
         sth1 = SignedTreeHead.sign(
             sequence=3, tree_size=7, root_hash=root,
             operator_vk=operator_kp.vk, operator_sk=operator_kp.sk,
@@ -412,13 +412,13 @@ class TestEquivocation:
     def test_invalid_sth_not_equivocation(self, operator_kp, operator_b_kp):
         """A forged / tampered STH that fails verify() cannot prove equivocation."""
         import dataclasses
-        real_root = H_bytes(b"real")
+        real_root = canonical_hash_bytes(b"real")
         sth_real = SignedTreeHead.sign(
             sequence=2, tree_size=4, root_hash=real_root,
             operator_vk=operator_kp.vk, operator_sk=operator_kp.sk,
         )
         # Tamper with the root — signature no longer valid
-        sth_tampered = dataclasses.replace(sth_real, root_hash=H_bytes(b"fake"))
+        sth_tampered = dataclasses.replace(sth_real, root_hash=canonical_hash_bytes(b"fake"))
         assert not sth_tampered.verify()
         assert not MerkleLog.detect_equivocation(sth_real, sth_tampered)
 

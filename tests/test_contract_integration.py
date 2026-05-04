@@ -698,11 +698,11 @@ class TestLiveBridge:
         assert result.message.nonce == 0
 
         # Anchor exists ON-CHAIN (not simulated)
-        assert result.is_anchored_on_chain is True
-        assert result.on_chain_entity_state == 2  # ANCHORED
+        assert result.is_anchored_on_l1 is True
+        assert result.l1_entity_state == 2  # ANCHORED
 
         # Transaction was real (64 hex chars, may or may not have 0x prefix)
-        tx_hash = result.anchor_tx_hash
+        tx_hash = result.l1_anchor_tx_hash
         clean = tx_hash[2:] if tx_hash.startswith("0x") else tx_hash
         assert len(clean) == 64
         int(clean, 16)  # Valid hex
@@ -732,10 +732,10 @@ class TestLiveBridge:
 
         # All anchors exist on-chain
         for r in results:
-            assert r.is_anchored_on_chain is True
+            assert r.is_anchored_on_l1 is True
 
         # On-chain sequence matches
-        on_chain_seq = live_bridge.on_chain_sequence
+        on_chain_seq = live_bridge.l1_on_chain_sequence
         assert on_chain_seq == results[-1].sequence
 
     def test_on_chain_state_is_anchored(self, live_bridge):
@@ -754,6 +754,6 @@ class TestLiveBridge:
 
         result = live_bridge.transfer(msg)
         assert result is not None
-        assert result.on_chain_entity_state == 2  # ANCHORED
+        assert result.l1_entity_state == 2  # ANCHORED
         assert result.source_chain == "ethereum"
         assert result.dest_chain == "optimism"

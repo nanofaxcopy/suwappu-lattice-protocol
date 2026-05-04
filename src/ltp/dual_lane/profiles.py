@@ -41,19 +41,12 @@ class SecurityProfile:
         *,
         canonical_hash: Optional[HashFunction] = None,
         internal_hash: Optional[HashFunction] = None,
-        hash_fn: Optional[HashFunction] = None,
     ) -> None:
         if level not in (3, 5):
             raise ValueError(f"Security level must be 3 or 5, got {level}")
 
         self.level = level
-
-        # Backward compatibility: hash_fn sets canonical_hash if provided
-        if hash_fn is not None and canonical_hash is None:
-            self._canonical_hash = hash_fn
-        else:
-            self._canonical_hash = canonical_hash or HashFunction.SHA3_256
-
+        self._canonical_hash = canonical_hash or HashFunction.SHA3_256
         self._internal_hash = internal_hash or HashFunction.BLAKE3_256
 
         if level == 3:
@@ -88,16 +81,6 @@ class SecurityProfile:
         return self._internal_hash
 
     @property
-    def hash_fn(self) -> HashFunction:
-        """Deprecated: use canonical_hash_fn instead. Returns canonical lane hash."""
-        return self._canonical_hash
-
-    @hash_fn.setter
-    def hash_fn(self, value: HashFunction) -> None:
-        """Deprecated: sets canonical_hash_fn for backward compatibility."""
-        self._canonical_hash = value
-
-    @property
     def label(self) -> str:
         return f"Level-{self.level}/{self._canonical_hash.value}+{self._internal_hash.value}"
 
@@ -111,17 +94,13 @@ class SecurityProfile:
 
     # Convenience constructors
     @classmethod
-    def level3(cls, hash_fn: Optional[HashFunction] = None):
+    def level3(cls) -> "SecurityProfile":
         """NIST Level 3: ML-KEM-768 + ML-DSA-65 (civilian/commercial)."""
-        if hash_fn is not None:
-            return cls(level=3, hash_fn=hash_fn)
         return cls(level=3)
 
     @classmethod
-    def level5(cls, hash_fn: Optional[HashFunction] = None):
+    def level5(cls) -> "SecurityProfile":
         """NIST Level 5: ML-KEM-1024 + ML-DSA-87 (CNSA 2.0 / NSS)."""
-        if hash_fn is not None:
-            return cls(level=5, hash_fn=hash_fn)
         return cls(level=5, canonical_hash=HashFunction.SHA_384)
 
     @classmethod

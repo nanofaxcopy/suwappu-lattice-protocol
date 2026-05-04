@@ -53,12 +53,6 @@ class TestBinaries:
         path = prover._host_binary_path()
         assert "sp1-host" in path
 
-    def test_verify_binary_path_resolution(self):
-        """Python prover resolves verify binary path correctly."""
-        prover = SP1ZKBridgeProver(prove_mode="local")
-        path = prover._verify_binary_path()
-        assert "sp1-verify" in path
-
 
 # ---------------------------------------------------------------------------
 # Mock mode regression

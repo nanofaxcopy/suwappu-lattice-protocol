@@ -16,7 +16,6 @@ Security properties:
 """
 
 from .message import BridgeMessage, BridgeCommitment, RelayPacket
-from .nonce import NonceTracker
 from .anchor import L1Anchor
 from .relayer import Relayer
 from .materializer import L2Materializer
@@ -25,7 +24,6 @@ __all__ = [
     "BridgeMessage",
     "BridgeCommitment",
     "RelayPacket",
-    "NonceTracker",
     "L1Anchor",
     "Relayer",
     "L2Materializer",

@@ -57,7 +57,7 @@ from src.ltp.economics import (
     SlashingTier,
     WEI_PER_LTP,
 )
-from src.ltp.primitives import H
+from src.ltp.primitives import canonical_hash
 
 
 # ===========================================================================
@@ -127,7 +127,7 @@ class TestPDPVerifier:
         verifier = PDPVerifier()
 
         # Register shard hashes (verifier knows the expected hashes)
-        shard_hashes = {i: H(data) for i, data in shards.items()}
+        shard_hashes = {i: canonical_hash(data) for i, data in shards.items()}
         verifier.register_commitment("entity-1", shard_hashes)
 
         # Generate challenge
@@ -146,7 +146,7 @@ class TestPDPVerifier:
         shards = self._make_shards()
         verifier = PDPVerifier()
 
-        shard_hashes = {i: H(data) for i, data in shards.items()}
+        shard_hashes = {i: canonical_hash(data) for i, data in shards.items()}
         verifier.register_commitment("entity-2", shard_hashes)
 
         challenge = PDPChallenge.generate("entity-2", 8, 4, 100)
@@ -166,7 +166,7 @@ class TestPDPVerifier:
         shards = self._make_shards()
         verifier = PDPVerifier()
 
-        shard_hashes = {i: H(data) for i, data in shards.items()}
+        shard_hashes = {i: canonical_hash(data) for i, data in shards.items()}
         verifier.register_commitment("entity-3", shard_hashes)
 
         challenge = PDPChallenge.generate("entity-3", 8, 4, 100)
@@ -186,7 +186,7 @@ class TestPDPVerifier:
     def test_wrong_challenge_id_fails(self):
         shards = self._make_shards()
         verifier = PDPVerifier()
-        shard_hashes = {i: H(data) for i, data in shards.items()}
+        shard_hashes = {i: canonical_hash(data) for i, data in shards.items()}
         verifier.register_commitment("entity-4", shard_hashes)
 
         challenge = PDPChallenge.generate("entity-4", 8, 4, 100)

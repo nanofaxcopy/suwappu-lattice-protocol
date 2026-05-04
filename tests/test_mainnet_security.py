@@ -30,7 +30,6 @@ from src.ltp.commitment import (
 )
 from src.ltp.entity import Entity
 from src.ltp.keypair import KeyPair
-from src.ltp.primitives import H
 from src.ltp.protocol import LTPProtocol
 
 

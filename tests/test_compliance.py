@@ -42,8 +42,8 @@ from src.ltp.compliance import (
 )
 from src.ltp.commitment import CommitmentNetwork
 from src.ltp.primitives import (
-    H,
-    H_bytes,
+    canonical_hash,
+    canonical_hash_bytes,
     AEAD,
     MLKEM,
     MLDSA,
@@ -1058,7 +1058,7 @@ class TestSecurityProfileConstruction:
     def test_level3_defaults(self):
         p = SecurityProfile.level3()
         assert p.level == 3
-        assert p.hash_fn == HashFunction.SHA3_256
+        assert p.canonical_hash_fn == HashFunction.SHA3_256
         assert p.kem_ek_size == 1184
         assert p.kem_dk_size == 2400
         assert p.kem_ct_size == 1088
@@ -1069,7 +1069,7 @@ class TestSecurityProfileConstruction:
     def test_level5_defaults(self):
         p = SecurityProfile.level5()
         assert p.level == 5
-        assert p.hash_fn == HashFunction.SHA_384
+        assert p.canonical_hash_fn == HashFunction.SHA_384
         assert p.kem_ek_size == 1568
         assert p.kem_dk_size == 3168
         assert p.kem_ct_size == 1568
@@ -1080,16 +1080,16 @@ class TestSecurityProfileConstruction:
     def test_cnsa2_is_level5_sha384(self):
         p = SecurityProfile.cnsa2()
         assert p.level == 5
-        assert p.hash_fn == HashFunction.SHA_384
+        assert p.canonical_hash_fn == HashFunction.SHA_384
 
     def test_invalid_level_raises(self):
         with pytest.raises(ValueError, match="must be 3 or 5"):
             SecurityProfile(level=4)
 
     def test_custom_hash_on_level3(self):
-        p = SecurityProfile(level=3, hash_fn=HashFunction.SHA_512)
+        p = SecurityProfile(level=3, canonical_hash=HashFunction.SHA_512)
         assert p.level == 3
-        assert p.hash_fn == HashFunction.SHA_512
+        assert p.canonical_hash_fn == HashFunction.SHA_512
 
     def test_label_format(self):
         p = SecurityProfile.level3()
@@ -1208,44 +1208,44 @@ class TestLevel5SealedBox:
 
 class TestHashFunction:
     def test_sha3_256_prefix(self):
-        h = H(b"test")
+        h = canonical_hash(b"test")
         assert h.startswith("sha3-256:")
 
     def test_sha384_prefix(self):
-        set_security_profile(SecurityProfile(level=3, hash_fn=HashFunction.SHA_384))
-        h = H(b"test")
+        set_security_profile(SecurityProfile(level=3, canonical_hash=HashFunction.SHA_384))
+        h = canonical_hash(b"test")
         assert h.startswith("sha384:")
 
     def test_sha512_prefix(self):
-        set_security_profile(SecurityProfile(level=3, hash_fn=HashFunction.SHA_512))
-        h = H(b"test")
+        set_security_profile(SecurityProfile(level=3, canonical_hash=HashFunction.SHA_512))
+        h = canonical_hash(b"test")
         assert h.startswith("sha512:")
 
     def test_blake2b_bytes_size(self):
-        raw = H_bytes(b"test")
+        raw = canonical_hash_bytes(b"test")
         assert len(raw) == 32
 
     def test_sha384_bytes_size(self):
-        set_security_profile(SecurityProfile(level=3, hash_fn=HashFunction.SHA_384))
-        raw = H_bytes(b"test")
+        set_security_profile(SecurityProfile(level=3, canonical_hash=HashFunction.SHA_384))
+        raw = canonical_hash_bytes(b"test")
         assert len(raw) == 48
 
     def test_sha512_bytes_size(self):
-        set_security_profile(SecurityProfile(level=3, hash_fn=HashFunction.SHA_512))
-        raw = H_bytes(b"test")
+        set_security_profile(SecurityProfile(level=3, canonical_hash=HashFunction.SHA_512))
+        raw = canonical_hash_bytes(b"test")
         assert len(raw) == 64
 
     def test_different_algos_different_hashes(self):
         data = b"comparison test"
 
         set_security_profile(SecurityProfile(level=3))
-        h_sha3 = H(data)
+        h_sha3 = canonical_hash(data)
 
-        set_security_profile(SecurityProfile(level=3, hash_fn=HashFunction.SHA_384))
-        h_sha384 = H(data)
+        set_security_profile(SecurityProfile(level=3, canonical_hash=HashFunction.SHA_384))
+        h_sha384 = canonical_hash(data)
 
-        set_security_profile(SecurityProfile(level=3, hash_fn=HashFunction.SHA_512))
-        h_sha512 = H(data)
+        set_security_profile(SecurityProfile(level=3, canonical_hash=HashFunction.SHA_512))
+        h_sha512 = canonical_hash(data)
 
         assert h_sha3 != h_sha384
         assert h_sha384 != h_sha512
@@ -1253,12 +1253,12 @@ class TestHashFunction:
 
     def test_same_algo_deterministic(self):
         data = b"determinism test"
-        h1 = H(data)
-        h2 = H(data)
+        h1 = canonical_hash(data)
+        h2 = canonical_hash(data)
         assert h1 == h2
 
     def test_aead_works_with_sha384(self):
-        set_security_profile(SecurityProfile(level=3, hash_fn=HashFunction.SHA_384))
+        set_security_profile(SecurityProfile(level=3, canonical_hash=HashFunction.SHA_384))
         key = b"k" * 32
         nonce = b"n" * AEAD.NONCE_SIZE
         plaintext = b"encrypt me with sha384 hash"
@@ -1267,7 +1267,7 @@ class TestHashFunction:
         assert pt == plaintext
 
     def test_aead_works_with_sha512(self):
-        set_security_profile(SecurityProfile(level=3, hash_fn=HashFunction.SHA_512))
+        set_security_profile(SecurityProfile(level=3, canonical_hash=HashFunction.SHA_512))
         key = b"k" * 32
         nonce = b"n" * AEAD.NONCE_SIZE
         plaintext = b"encrypt me with sha512 hash"

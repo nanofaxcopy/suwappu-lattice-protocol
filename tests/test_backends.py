@@ -17,7 +17,7 @@ from src.ltp.backends import (
     create_backend,
 )
 from src.ltp.backends.base import FinalityModel
-from src.ltp.primitives import H
+from src.ltp.primitives import canonical_hash
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +64,7 @@ ALL_BACKENDS = ["local_backend", "base_l1_backend", "ethereum_backend"]
 
 def _sample_record(entity_id: str = None) -> tuple[str, bytes, bytes, bytes]:
     """Generate sample commitment data."""
-    eid = entity_id or H(b"test-entity-" + bytes(range(32)))
+    eid = entity_id or canonical_hash(b"test-entity-" + bytes(range(32)))
     record_bytes = b'{"entity_id":"' + eid.encode() + b'","shape":"text/plain"}'
     signature = b"\x00" * 64
     sender_vk = b"\x01" * 32
@@ -251,7 +251,7 @@ class TestBaseL1Backend:
 
     def test_multiple_commitments_in_blocks(self, base_l1_backend):
         for i in range(5):
-            eid = H(f"entity-{i}".encode())
+            eid = canonical_hash(f"entity-{i}".encode())
             rec = f'{{"id":"{eid}","idx":{i}}}'.encode()
             base_l1_backend.append_commitment(eid, rec, b"\x00" * 64, b"\x01" * 32)
         assert base_l1_backend.total_commitments == 5
@@ -336,7 +336,7 @@ class TestEthereumBackend:
 
     def test_multiple_commitments_produce_blocks(self, ethereum_backend):
         for i in range(3):
-            eid = H(f"eth-entity-{i}".encode())
+            eid = canonical_hash(f"eth-entity-{i}".encode())
             rec = f'{{"id":"{eid}"}}'.encode()
             ethereum_backend.append_commitment(eid, rec, b"\x00" * 64, b"\x01" * 32)
         assert ethereum_backend.chain_height >= 3
@@ -379,7 +379,7 @@ class TestBackendComparison:
     ):
         """The same entity committed to all three backends should be fetchable."""
         for i, backend in enumerate([local_backend, base_l1_backend, ethereum_backend]):
-            eid = H(f"cross-backend-{i}".encode())
+            eid = canonical_hash(f"cross-backend-{i}".encode())
             rec = f'{{"entity_id":"{eid}"}}'.encode()
             ref = backend.append_commitment(eid, rec, b"\x00" * 64, b"\x01" * 32)
             assert ref.startswith("sha3-256:")

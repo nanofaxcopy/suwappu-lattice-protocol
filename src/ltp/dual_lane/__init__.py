@@ -18,8 +18,6 @@ from .hashing import (
     canonical_hash_bytes,
     internal_hash,
     internal_hash_bytes,
-    H,
-    H_bytes,
 )
 
 from .lanes import (
@@ -40,8 +38,6 @@ __all__ = [
     "canonical_hash_bytes",
     "internal_hash",
     "internal_hash_bytes",
-    "H",
-    "H_bytes",
     "set_compliance_strict",
     "get_compliance_strict",
     "_blake3_available",

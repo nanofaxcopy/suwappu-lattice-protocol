@@ -33,7 +33,7 @@ Run demo:
 """
 
 from .primitives import (
-    H, H_bytes, AEAD, MLKEM, MLDSA,
+    AEAD, MLKEM, MLDSA,
     SecurityProfile, HashFunction, CryptoLane,
     canonical_hash, canonical_hash_bytes,
     internal_hash, internal_hash_bytes,
@@ -166,9 +166,7 @@ __all__ = [
     # Compliance
     "set_compliance_strict",
     "get_compliance_strict",
-    # Primitives (H/H_bytes deprecated — use canonical_hash/internal_hash)
-    "H",
-    "H_bytes",
+    # Primitives
     "AEAD",
     "MLKEM",
     "MLDSA",

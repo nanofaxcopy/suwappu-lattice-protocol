@@ -21,7 +21,7 @@ from src.ltp.commitment import CommitmentNetwork, CommitmentNode
 from src.ltp.entity import Entity
 from src.ltp.erasure import ErasureCoder
 from src.ltp.keypair import KeyPair
-from src.ltp.primitives import H
+from src.ltp.primitives import canonical_hash
 from src.ltp.protocol import LTPProtocol
 from src.ltp.shards import ShardEncryptor, _CEK_TRACKING_LIMIT
 from src.ltp.merkle_log.tree import MerkleTree
@@ -88,7 +88,7 @@ class TestPlacementCache:
         for i in range(6):
             net.add_node(f"node-{i}", f"region-{i % 3}")
 
-        entity_id = H(b"test-entity")
+        entity_id = canonical_hash(b"test-entity")
         # First call populates cache
         p1 = net._placement(entity_id, 0)
         # Second call should hit cache
@@ -103,7 +103,7 @@ class TestPlacementCache:
         for i in range(4):
             net.add_node(f"node-{i}", "US-East")
 
-        entity_id = H(b"test-entity")
+        entity_id = canonical_hash(b"test-entity")
         net._placement(entity_id, 0)
         assert len(net._placement_cache) > 0
 
@@ -116,7 +116,7 @@ class TestPlacementCache:
         for i in range(6):
             net.add_node(f"node-{i}", f"region-{i % 3}")
 
-        entity_id = H(b"deterministic-test")
+        entity_id = canonical_hash(b"deterministic-test")
         results = set()
         for _ in range(100):
             p = net._placement(entity_id, 3)
@@ -134,7 +134,7 @@ class TestAuditReverseIndex:
         for i in range(4):
             net.add_node(f"node-{i}", f"region-{i % 2}")
 
-        entity_id = H(b"index-test")
+        entity_id = canonical_hash(b"index-test")
         shards = [os.urandom(64) for _ in range(8)]
         net.distribute_encrypted_shards(entity_id, shards)
 
@@ -239,7 +239,7 @@ class TestBackendBatchCommit:
         backend = create_backend(BackendConfig(backend_type="base-l1"))
         commitments = []
         for i in range(5):
-            eid = H(f"batch-base-l1-{i}".encode())
+            eid = canonical_hash(f"batch-base-l1-{i}".encode())
             rec = f'{{"id":"{eid}","idx":{i}}}'.encode()
             commitments.append((eid, rec, b"\x00" * 64, b"\x01" * 32))
 
@@ -264,7 +264,7 @@ class TestBackendBatchCommit:
         initial_gas = backend.total_gas_used
         commitments = []
         for i in range(5):
-            eid = H(f"batch-eth-{i}".encode())
+            eid = canonical_hash(f"batch-eth-{i}".encode())
             rec = f'{{"id":"{eid}","idx":{i}}}'.encode()
             commitments.append((eid, rec, b"\x00" * 64, b"\x01" * 32))
 
@@ -285,7 +285,7 @@ class TestBackendBatchCommit:
         initial_tx_count = backend.transaction_count
         commitments = []
         for i in range(3):
-            eid = H(f"batch-tx-{i}".encode())
+            eid = canonical_hash(f"batch-tx-{i}".encode())
             rec = f'{{"id":"{eid}"}}'.encode()
             commitments.append((eid, rec, b"\x00" * 64, b"\x01" * 32))
 
@@ -295,7 +295,7 @@ class TestBackendBatchCommit:
 
     def test_batch_duplicate_raises(self):
         backend = create_backend(BackendConfig(backend_type="base-l1"))
-        eid = H(b"duplicate-batch")
+        eid = canonical_hash(b"duplicate-batch")
         rec = b'{"id":"test"}'
         backend.append_commitment(eid, rec, b"\x00" * 64, b"\x01" * 32)
 
@@ -312,7 +312,7 @@ class TestBackendBatchCommit:
 class TestFinalityCallback:
     def test_callback_fires_when_finalized(self):
         backend = create_backend(BackendConfig(backend_type="local"))
-        eid, rec = H(b"finality-test"), b'{"test":true}'
+        eid, rec = canonical_hash(b"finality-test"), b'{"test":true}'
         backend.append_commitment(eid, rec, b"\x00" * 64, b"\x01" * 32)
 
         called = []
@@ -337,7 +337,7 @@ class TestShardMapRoot:
         for i in range(4):
             net.add_node(f"node-{i}", f"region-{i % 2}")
 
-        entity_id = H(b"root-test")
+        entity_id = canonical_hash(b"root-test")
         shards = [os.urandom(64) for _ in range(4)]
         root = net.distribute_encrypted_shards(entity_id, shards)
         assert root.startswith("sha3-256:")

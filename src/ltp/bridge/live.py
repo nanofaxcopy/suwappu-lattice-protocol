@@ -30,8 +30,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
-import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 from ..anchor.client import AnchorClient
@@ -83,24 +82,6 @@ class LiveBridgeResult:
     zk_proof_id: Optional[str] = None
     zk_finalized: bool = False
 
-    # --- Backward-compat properties (used by test_contract_integration.py) ---
-
-    @property
-    def anchor_tx_hash(self) -> str:
-        return self.l1_anchor_tx_hash
-
-    @property
-    def is_anchored_on_chain(self) -> bool:
-        return self.is_anchored_on_l1
-
-    @property
-    def on_chain_entity_state(self) -> int:
-        return self.l1_entity_state
-
-    @property
-    def block_height(self) -> int:
-        return self.l1_block_height
-
 
 class LiveBridge:
     """
@@ -138,23 +119,9 @@ class LiveBridge:
         challenge_manager=None,
         # ZK bridge
         zk_prover=None,
-        # Backward compat aliases
-        anchor_client: Optional[AnchorClient] = None,
-        chain_id_int: Optional[int] = None,
     ) -> None:
-        # Handle backward-compat aliases
-        if anchor_client is not None:
-            warnings.warn(
-                "anchor_client is deprecated, use l1_client instead",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            l1_client = anchor_client
-        if chain_id_int is not None:
-            l1_chain_id = chain_id_int
-
         if l1_client is None:
-            raise TypeError("l1_client (or anchor_client) is required")
+            raise TypeError("l1_client is required")
 
         self._protocol = protocol
         self._l1_client = l1_client
@@ -455,8 +422,3 @@ class LiveBridge:
     def l2_on_chain_sequence(self) -> int:
         """Return the current on-chain sequence on L2 for this bridge's signer."""
         return self._l2_client.signer_sequence(self._signer_vk_hash)
-
-    @property
-    def on_chain_sequence(self) -> int:
-        """Backward compat: returns L1 sequence."""
-        return self.l1_on_chain_sequence

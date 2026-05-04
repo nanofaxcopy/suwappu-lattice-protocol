@@ -913,8 +913,8 @@ class TestBaseL1EconomicsIntegration:
         backend = self._create_backend()
         backend.register_node("node-0", "US-East", stake_wei=500 * WEI_PER_LTP)
 
-        from src.ltp.primitives import H
-        eid = H(b"test-entity-1")
+        from src.ltp.primitives import canonical_hash
+        eid = canonical_hash(b"test-entity-1")
         backend.append_commitment(
             eid, b'{"test":true}', b"\x00" * 64, b"\x01" * 32
         )

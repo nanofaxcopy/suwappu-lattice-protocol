@@ -13,11 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
-import struct
-from pathlib import Path
-from typing import Optional
 
-from ..domain import DOMAIN_ZK_BRIDGE
 from ..primitives import canonical_hash_bytes
 from .zk_bridge import (
     ZKBridgeBackend,
@@ -34,8 +30,9 @@ __all__ = ["RiscZeroZKBridgeProver"]
 class RiscZeroZKBridgeProver(ZKBridgeProver):
     """RISC Zero zkVM prover for ML-DSA-65 signature validity.
 
-    Mock mode generates 128B hash-based proofs distinguishable from SP1 mock
-    proofs by using "r0-" prefixed domain tags.
+    Mock mode delegates to a real FRI-based STARK fallback (shared with SP1),
+    so proofs have genuine cryptographic soundness even without the RISC Zero
+    toolchain installed.
     """
 
     def __init__(self, prove_mode: str = "mock") -> None:
@@ -75,24 +72,10 @@ class RiscZeroZKBridgeProver(ZKBridgeProver):
             proof_id=proof_id,
         )
 
-    def _marshal_witnesses(self, sth) -> bytes:
-        """Serialize witnesses — same format as SP1 (length-prefixed LE vectors)."""
-        parts = []
-        for data in [sth.operator_vk, sth.signature, sth.signable_payload()]:
-            parts.append(struct.pack("<I", len(data)))
-            parts.append(data)
-        return b"".join(parts)
-
     def _mock_proof(self, sth, public_inputs: ZKBridgePublicInputs) -> bytes:
-        """Real STARK-based fallback proof when RISC Zero toolchain is not available.
-
-        Delegates to STARKBridgeProver for a real FRI-based polynomial commitment
-        proof instead of the old hash-based 128B simulation.
-        """
-        from .zk_bridge import STARKBridgeProver
-        stark = STARKBridgeProver(num_fri_rounds=4, security_bits=128)
-        stark_proof = stark.prove_sth_signature(sth)
-        return stark_proof.proof_bytes
+        """Real STARK-based fallback proof when RISC Zero toolchain is not available."""
+        from ._stark_fallback import stark_fallback_proof_bytes
+        return stark_fallback_proof_bytes(sth)
 
     def _local_proof(self, stdin_data: bytes) -> bytes:
         """Generate proof using RISC Zero host binary."""
@@ -124,9 +107,4 @@ class RiscZeroZKBridgeProver(ZKBridgeProver):
         return result.stdout
 
     def _host_binary_path(self) -> str:
-        base = Path(__file__).resolve().parent
-        return str((base / "../../../zkvm/risc0-host/target/release/risc0-host").resolve())
-
-    def _verify_binary_path(self) -> str:
-        base = Path(__file__).resolve().parent
-        return str((base / "../../../zkvm/risc0-host/target/release/risc0-verify").resolve())
+        return self._zkvm_binary("risc0-host/target/release/risc0-host")

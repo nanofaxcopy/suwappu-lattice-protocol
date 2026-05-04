@@ -18,7 +18,7 @@ from src.ltp import (
     KeyPair,
     LTPProtocol,
     ShardEncryptor,
-    H,
+    canonical_hash,
 )
 
 
@@ -56,7 +56,7 @@ class TestSINT:
         import pytest
 
         cek = ShardEncryptor.generate_cek()
-        entity_id = H(os.urandom(32))
+        entity_id = canonical_hash(os.urandom(32))
         shard = os.urandom(256)
         encrypted = ShardEncryptor.encrypt_shard(cek, entity_id, shard, 0)
 
@@ -70,7 +70,7 @@ class TestSINT:
         from src.ltp.shards import ShardEncryptor
         cek = ShardEncryptor.generate_cek()
         wrong_cek = ShardEncryptor.generate_cek()
-        entity_id = H(os.urandom(32))
+        entity_id = canonical_hash(os.urandom(32))
         shard = os.urandom(128)
         encrypted = ShardEncryptor.encrypt_shard(cek, entity_id, shard, 0)
         with pytest.raises(ValueError):
@@ -192,7 +192,7 @@ class TestTSEC:
         shards_1 = ErasureCoder.encode(msg_1, self.N, self.K)
 
         cek = ShardEncryptor.generate_cek()
-        entity_id = H(cek + b"tsec-test")
+        entity_id = canonical_hash(cek + b"tsec-test")
 
         enc_0 = [ShardEncryptor.encrypt_shard(cek, entity_id, s, i) for i, s in enumerate(shards_0)]
         enc_1 = [ShardEncryptor.encrypt_shard(cek, entity_id, s, i) for i, s in enumerate(shards_1)]
@@ -297,13 +297,13 @@ class TestIMM:
         assert record.verify_signature(alice.vk) is True
 
         original_hash = record.content_hash
-        record.content_hash = H(b"fake content")
+        record.content_hash = canonical_hash(b"fake content")
         assert record.verify_signature(alice.vk) is False
 
         record.content_hash = original_hash  # restore
 
     def test_end_to_end_content_integrity(self, protocol, alice, bob):
-        """Materialize must verify H(reconstructed) == EntityID."""
+        """Materialize must verify canonical_hash(reconstructed) == EntityID."""
         content = b"end-to-end integrity test"
         entity = Entity(content=content, shape="x-ltp/immutability-test")
         entity_id, record, cek = protocol.commit(entity, alice, n=8, k=4)

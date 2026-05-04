@@ -14,7 +14,7 @@ from src.ltp.commitment import (
 )
 from src.ltp.entity import Entity
 from src.ltp.keypair import KeyPair
-from src.ltp.primitives import H
+from src.ltp.primitives import canonical_hash
 
 
 # ---------------------------------------------------------------------------
@@ -22,16 +22,16 @@ from src.ltp.primitives import H
 # ---------------------------------------------------------------------------
 
 def _make_record(keypair: KeyPair) -> CommitmentRecord:
-    entity_id = H(os.urandom(32))
+    entity_id = canonical_hash(os.urandom(32))
     record = CommitmentRecord(
         entity_id=entity_id,
         sender_id=keypair.label,
-        shard_map_root=H(b"root"),
-        content_hash=H(b"content"),
+        shard_map_root=canonical_hash(b"root"),
+        content_hash=canonical_hash(b"content"),
         encoding_params={"n": 8, "k": 4, "algorithm": "reed-solomon-gf256",
                          "gf_poly": "0x11d", "eval": "vandermonde-powers-of-0x02"},
         shape="text/plain",
-        shape_hash=H(b"text/plain"),
+        shape_hash=canonical_hash(b"text/plain"),
         timestamp=1740000000.0,
     )
     record.sign(keypair.sk)
@@ -57,13 +57,13 @@ class TestCommitmentRecord:
     def test_tamper_content_hash_breaks_sig(self):
         kp = KeyPair.generate("alice")
         record = _make_record(kp)
-        record.content_hash = H(b"different content")
+        record.content_hash = canonical_hash(b"different content")
         assert record.verify_signature(kp.vk) is False
 
     def test_tamper_entity_id_breaks_sig(self):
         kp = KeyPair.generate("alice")
         record = _make_record(kp)
-        record.entity_id = H(b"fake entity")
+        record.entity_id = canonical_hash(b"fake entity")
         assert record.verify_signature(kp.vk) is False
 
     def test_predecessor_excluded_from_signable_payload(self):
@@ -192,14 +192,14 @@ class TestCommitmentNetwork:
         assert len(network.nodes) == 6
 
     def test_distribute_and_fetch(self, network):
-        entity_id = H(b"test-entity")
+        entity_id = canonical_hash(b"test-entity")
         shards = [os.urandom(64) for _ in range(8)]
         network.distribute_encrypted_shards(entity_id, shards)
         fetched = network.fetch_encrypted_shards(entity_id, 8, 4)
         assert len(fetched) >= 4
 
     def test_fetch_returns_at_most_requested(self, network):
-        entity_id = H(b"fetch-limit-test")
+        entity_id = canonical_hash(b"fetch-limit-test")
         shards = [os.urandom(64) for _ in range(8)]
         network.distribute_encrypted_shards(entity_id, shards)
         fetched = network.fetch_encrypted_shards(entity_id, 8, 4)
@@ -207,7 +207,7 @@ class TestCommitmentNetwork:
         assert len(fetched) <= 8
 
     def test_placement_deterministic(self, network):
-        entity_id = H(b"stable-entity")
+        entity_id = canonical_hash(b"stable-entity")
         p1 = network._placement(entity_id, 0)
         p2 = network._placement(entity_id, 0)
         assert [n.node_id for n in p1] == [n.node_id for n in p2]

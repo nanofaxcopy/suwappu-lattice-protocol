@@ -17,11 +17,8 @@ from __future__ import annotations
 
 import logging
 import os
-import struct
 from pathlib import Path
-from typing import Optional
 
-from ..domain import DOMAIN_ZK_BRIDGE
 from ..primitives import canonical_hash_bytes
 from .zk_bridge import (
     ZKBridgeBackend,
@@ -34,9 +31,9 @@ logger = logging.getLogger(__name__)
 
 __all__ = ["SP1ZKBridgeProver"]
 
-# Default ELF path relative to this file
-_DEFAULT_ELF_REL = (
-    "../../../zkvm/sp1-mldsa-verifier/target/"
+# Default ELF path relative to the project's ``zkvm/`` directory.
+_DEFAULT_ELF_REL_SUBPATH = (
+    "sp1-mldsa-verifier/target/"
     "elf-compilation/riscv64im-succinct-zkvm-elf/release/sp1-mldsa-verifier"
 )
 
@@ -120,32 +117,14 @@ class SP1ZKBridgeProver(ZKBridgeProver):
             proof_id=proof_id,
         )
 
-    def _marshal_witnesses(self, sth) -> bytes:
-        """Serialize witnesses for SP1 stdin.
-
-        SP1's read_vec() expects: len(4B LE) || data for each vector.
-        Order: operator_vk, signature, signable_payload.
-        """
-        parts = []
-        for data in [sth.operator_vk, sth.signature, sth.signable_payload()]:
-            parts.append(struct.pack("<I", len(data)))  # 4-byte little-endian length
-            parts.append(data)
-        return b"".join(parts)
-
     # ------------------------------------------------------------------
     # Prove modes
     # ------------------------------------------------------------------
 
     def _mock_proof(self, sth, public_inputs: ZKBridgePublicInputs) -> bytes:
-        """Real STARK-based fallback proof when SP1 toolchain is not available.
-
-        Delegates to STARKBridgeProver for a real FRI-based polynomial commitment
-        proof instead of the old hash-based 128B simulation.
-        """
-        from .zk_bridge import STARKBridgeProver
-        stark = STARKBridgeProver(num_fri_rounds=4, security_bits=128)
-        stark_proof = stark.prove_sth_signature(sth)
-        return stark_proof.proof_bytes
+        """Real STARK-based fallback proof when SP1 toolchain is not available."""
+        from ._stark_fallback import stark_fallback_proof_bytes
+        return stark_fallback_proof_bytes(sth)
 
     def _local_proof(self, stdin_data: bytes) -> bytes:
         """Generate proof using SP1 host binary (local CPU prover)."""
@@ -282,19 +261,10 @@ class SP1ZKBridgeProver(ZKBridgeProver):
 
     def _host_binary_path(self) -> str:
         """Resolve path to the sp1-host binary."""
-        base = Path(__file__).resolve().parent
-        host = base / "../../../zkvm/sp1-host/target/release/sp1-host"
-        return str(host.resolve())
-
-    def _verify_binary_path(self) -> str:
-        """Resolve path to the sp1-verify binary."""
-        base = Path(__file__).resolve().parent
-        verify = base / "../../../zkvm/sp1-host/target/release/sp1-verify"
-        return str(verify.resolve())
+        return self._zkvm_binary("sp1-host/target/release/sp1-host")
 
     @staticmethod
     def _default_elf_path() -> str:
         """Resolve default ELF path relative to this source file."""
-        base = Path(__file__).resolve().parent
-        elf = base / _DEFAULT_ELF_REL
-        return str(elf.resolve()) if elf.exists() else str(elf)
+        elf = Path(SP1ZKBridgeProver._zkvm_binary(_DEFAULT_ELF_REL_SUBPATH))
+        return str(elf) if elf.exists() else str(elf)

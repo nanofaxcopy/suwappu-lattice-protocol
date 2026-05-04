@@ -11,7 +11,6 @@ End-to-end scenario:
   7. Tampered packet → FAILS
 """
 
-import warnings
 from enum import IntEnum
 from unittest.mock import MagicMock
 
@@ -444,30 +443,6 @@ class TestCrossChainLiveBridge:
             payload={"token": "USDC", "amount": 100},
             nonce=nonce,
         )
-
-    def test_single_client_backward_compat(self, protocol, operator_kp, verifier_kp):
-        """Construct with deprecated anchor_client= kwarg, transfer succeeds."""
-        mock = MockAnchorClient(chain_id=31337, block_height=200)
-        with warnings.catch_warnings(record=True) as w:
-            warnings.simplefilter("always")
-            bridge = LiveBridge(
-                protocol=protocol,
-                anchor_client=mock,
-                operator_keypair=operator_kp,
-                l2_verifier_keypair=verifier_kp,
-                chain_id_int=31337,
-            )
-            assert len(w) == 1
-            assert "deprecated" in str(w[0].message).lower()
-
-        result = bridge.transfer(self._make_msg(nonce=0))
-        assert result is not None
-        # Backward-compat properties
-        assert result.anchor_tx_hash == result.l1_anchor_tx_hash
-        assert result.is_anchored_on_chain == result.is_anchored_on_l1
-        assert result.on_chain_entity_state == result.l1_entity_state
-        assert result.block_height == result.l1_block_height
-        assert result.cross_chain is False
 
     def test_dual_client_l1_only(
         self, protocol, operator_kp, verifier_kp, l1_mock, l2_mock

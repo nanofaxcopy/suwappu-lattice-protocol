@@ -1,11 +1,11 @@
 """
-Unit tests for cryptographic primitives (H, H_bytes, AEAD, MLKEM, MLDSA).
+Unit tests for cryptographic primitives (canonical_hash, AEAD, MLKEM, MLDSA).
 """
 
 import os
 import pytest
 
-from src.ltp.primitives import H, H_bytes, AEAD, MLKEM, MLDSA
+from src.ltp.primitives import canonical_hash, canonical_hash_bytes, AEAD, MLKEM, MLDSA
 
 
 # ---------------------------------------------------------------------------
@@ -13,33 +13,33 @@ from src.ltp.primitives import H, H_bytes, AEAD, MLKEM, MLDSA
 # ---------------------------------------------------------------------------
 
 class TestHashFunctions:
-    def test_H_returns_prefixed_string(self):
-        result = H(b"hello")
+    def test_canonical_hash_returns_prefixed_string(self):
+        result = canonical_hash(b"hello")
         assert result.startswith("sha3-256:")
 
-    def test_H_hex_length(self):
-        result = H(b"hello")
+    def test_canonical_hash_hex_length(self):
+        result = canonical_hash(b"hello")
         prefix, hex_part = result.split(":", 1)
         assert len(hex_part) == 64  # 32 bytes × 2 hex chars
 
-    def test_H_deterministic(self):
-        assert H(b"data") == H(b"data")
+    def test_canonical_hash_deterministic(self):
+        assert canonical_hash(b"data") == canonical_hash(b"data")
 
-    def test_H_different_inputs_differ(self):
-        assert H(b"a") != H(b"b")
+    def test_canonical_hash_different_inputs_differ(self):
+        assert canonical_hash(b"a") != canonical_hash(b"b")
 
-    def test_H_bytes_returns_32_bytes(self):
-        result = H_bytes(b"hello")
+    def test_canonical_hash_bytes_returns_32_bytes(self):
+        result = canonical_hash_bytes(b"hello")
         assert isinstance(result, bytes)
         assert len(result) == 32
 
-    def test_H_bytes_deterministic(self):
-        assert H_bytes(b"data") == H_bytes(b"data")
+    def test_canonical_hash_bytes_deterministic(self):
+        assert canonical_hash_bytes(b"data") == canonical_hash_bytes(b"data")
 
-    def test_H_bytes_matches_H_hex(self):
+    def test_canonical_hash_bytes_matches_hex(self):
         data = b"consistency check"
-        hex_from_H = H(data).split(":", 1)[1]
-        assert H_bytes(data).hex() == hex_from_H
+        hex_part = canonical_hash(data).split(":", 1)[1]
+        assert canonical_hash_bytes(data).hex() == hex_part
 
 
 # ---------------------------------------------------------------------------

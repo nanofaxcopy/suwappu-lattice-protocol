@@ -22,6 +22,7 @@ import struct
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..domain import DOMAIN_ZK_BRIDGE
@@ -35,8 +36,7 @@ __all__ = [
     "ZKBridgePublicInputs",
     "ZKBridgeProof",
     "ZKBridgeProver",
-    "MockZKBridgeProver",
-    "SimulatedZKBridgeProver",  # Backward-compat alias
+    "SimulatedZKBridgeProver",
     "STARKBridgeProver",
     "ZKBridgeVerifier",
 ]
@@ -123,8 +123,32 @@ class ZKBridgeProver(ABC):
     def backend(self) -> ZKBridgeBackend:
         ...
 
+    # Shared helpers for zkVM-backed provers (SP1, RISC Zero).
 
-class MockZKBridgeProver(ZKBridgeProver):
+    @staticmethod
+    def _marshal_witnesses(sth: "SignedTreeHead") -> bytes:
+        """Serialize witnesses as length-prefixed little-endian vectors.
+
+        Matches the stdin format expected by SP1's ``read_vec()`` and the
+        RISC Zero host loader. Order: operator_vk, signature, signable_payload.
+        """
+        parts = []
+        for data in [sth.operator_vk, sth.signature, sth.signable_payload()]:
+            parts.append(struct.pack("<I", len(data)))
+            parts.append(data)
+        return b"".join(parts)
+
+    @staticmethod
+    def _zkvm_binary(subpath: str) -> str:
+        """Resolve an absolute path to a zkVM toolchain binary or ELF.
+
+        ``subpath`` is resolved relative to the project's ``zkvm/`` directory.
+        """
+        base = Path(__file__).resolve().parent
+        return str((base / "../../../zkvm" / subpath).resolve())
+
+
+class SimulatedZKBridgeProver(ZKBridgeProver):
     """ZK bridge prover that delegates to the real STARKBridgeProver.
 
     Produces real FRI-based STARK proofs while keeping the SIMULATED
@@ -183,142 +207,64 @@ class ZKBridgeVerifier:
 def _verify_simulated(proof: ZKBridgeProof) -> bool:
     """Verify a SIMULATED-backend proof.
 
-    Now delegates to STARK verification since MockZKBridgeProver produces
-    real FRI-based STARK proofs with the SIMULATED backend discriminator.
-    Also accepts legacy 64B hash proofs for backward compatibility.
+    ``SimulatedZKBridgeProver`` delegates to ``STARKBridgeProver`` and tags
+    the resulting proof with the SIMULATED discriminator for API compat.
+    Verification therefore reduces to STARK verification.
     """
-    data = proof.proof_bytes
-
-    # Legacy 64B hash proof (backward compat)
-    if len(data) == 64:
-        proof_hash = data[:32]
-        claimed_tag = data[32:]
-        expected_tag = canonical_hash_bytes(
-            DOMAIN_ZK_BRIDGE
-            + proof.public_inputs.to_bytes()
-            + proof_hash
-            + b"sim-verify"
-        )
-        return hmac.compare_digest(claimed_tag, expected_tag)
-
-    # New: real STARK proof produced by MockZKBridgeProver
-    # Delegate to STARK verification (same format)
     return _verify_stark(proof)
+
+
+def _verify_zkvm_via_binary(data: bytes, verify_binary_subpath: str) -> bool:
+    """Run a zkVM verify binary on raw proof bytes.
+
+    Returns True iff the binary exits with status 0. Any exception (timeout,
+    missing binary, etc.) is reported as verification failure.
+    """
+    import subprocess
+
+    verify_path = ZKBridgeProver._zkvm_binary(verify_binary_subpath)
+    if not os.path.exists(verify_path):
+        return False
+    try:
+        result = subprocess.run(
+            [verify_path],
+            input=data,
+            capture_output=True,
+            timeout=30,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
 
 
 def _verify_sp1(proof: ZKBridgeProof) -> bool:
     """Verify an SP1 ZK bridge proof.
 
-    Mock/STARK fallback: delegates to STARK verification (FRI-based proof).
-    Real mode (SP1 binary): delegates to SP1 SDK verifier.
+    Mock mode emits a STARK-format proof (version-3 header) which is verified
+    locally. Real SP1 groth16 proofs are dispatched to the sp1-verify host
+    binary.
     """
     data = proof.proof_bytes
-
-    # Check if this is a STARK-format proof (v3 header: version byte = 3)
     if len(data) >= 8 and data[0] == 3:
         return _verify_stark(proof)
-
-    # Legacy 128B hash mock (backward compat)
-    if len(data) == 128:
-        proof_hash = data[:32]
-        public_inputs_hash = data[32:64]
-        witness_commitment = data[64:96]
-        claimed_tag = data[96:128]
-
-        expected_pi_hash = canonical_hash_bytes(
-            DOMAIN_ZK_BRIDGE + proof.public_inputs.to_bytes() + b"sp1-public"
-        )
-        if not hmac.compare_digest(public_inputs_hash, expected_pi_hash):
-            return False
-
-        expected_tag = canonical_hash_bytes(
-            DOMAIN_ZK_BRIDGE
-            + proof_hash
-            + public_inputs_hash
-            + witness_commitment
-            + b"sp1-mock-verify"
-        )
-        return hmac.compare_digest(claimed_tag, expected_tag)
-
     if len(data) > 128:
-        # Real SP1 proof — verify via sp1-verify host binary
-        import subprocess
-        from pathlib import Path
-        verify_bin = Path(__file__).resolve().parent / "../../../zkvm/sp1-host/target/release/sp1-verify"
-        verify_path = str(verify_bin.resolve())
-        if os.path.exists(verify_path):
-            try:
-                result = subprocess.run(
-                    [verify_path],
-                    input=proof.proof_bytes,
-                    capture_output=True,
-                    timeout=30,
-                )
-                return result.returncode == 0
-            except Exception:
-                return False
-        # No verify binary — cannot verify real proofs
-        return False
+        return _verify_zkvm_via_binary(data, "sp1-host/target/release/sp1-verify")
     return False
 
 
 def _verify_risc_zero(proof: ZKBridgeProof) -> bool:
     """Verify a RISC Zero ZK bridge proof.
 
-    Mock mode (128B): 4 x 32-byte hash segments with r0-specific tags.
-    Real mode (>128B): call risc0-verify binary via subprocess.
+    Mock mode emits a STARK-format proof (version-3 header) which is verified
+    locally. Real RISC Zero receipts are dispatched to the risc0-verify host
+    binary.
     """
     data = proof.proof_bytes
-
-    # Check if this is a STARK-format proof (v3 header: version byte = 3)
     if len(data) >= 8 and data[0] == 3:
         return _verify_stark(proof)
-
-    # Legacy 128B hash mock (backward compat)
-    if len(data) == 128:
-        proof_hash = data[:32]
-        public_inputs_hash = data[32:64]
-        witness_commitment = data[64:96]
-        claimed_tag = data[96:128]
-
-        expected_pi_hash = canonical_hash_bytes(
-            DOMAIN_ZK_BRIDGE + proof.public_inputs.to_bytes() + b"r0-public"
-        )
-        if not hmac.compare_digest(public_inputs_hash, expected_pi_hash):
-            return False
-
-        expected_tag = canonical_hash_bytes(
-            DOMAIN_ZK_BRIDGE
-            + proof_hash
-            + public_inputs_hash
-            + witness_commitment
-            + b"r0-mock-verify"
-        )
-        return hmac.compare_digest(claimed_tag, expected_tag)
-
     if len(data) > 128:
-        # Real RISC Zero proof — call verify binary
-        import subprocess
-        from pathlib import Path
-        verify_bin = Path(__file__).resolve().parent / "../../../zkvm/risc0-host/target/release/risc0-verify"
-        verify_path = str(verify_bin.resolve())
-        if os.path.exists(verify_path):
-            try:
-                result = subprocess.run(
-                    [verify_path],
-                    input=proof.proof_bytes,
-                    capture_output=True,
-                    timeout=30,
-                )
-                return result.returncode == 0
-            except Exception:
-                return False
-        return False
+        return _verify_zkvm_via_binary(data, "risc0-host/target/release/risc0-verify")
     return False
-
-
-# Backward-compat alias
-SimulatedZKBridgeProver = MockZKBridgeProver
 
 
 class STARKBridgeProver(ZKBridgeProver):

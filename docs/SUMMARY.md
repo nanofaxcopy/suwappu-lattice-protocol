@@ -30,6 +30,13 @@
 * [Deployment Guide](DEPLOYMENT_GUIDE.md)
 * [Bridge MVP Scope](bridge-mvp-scope.md)
 
+## Expansion
+
+* [Gateway VM Plan](LTP_GATEWAY_VM_PLAN.md)
+* [DID Expansion Plan](DID_EXPANSION_PLAN.md)
+* [Implementation Status](ETP_IMPLEMENTATION_STATUS.md)
+* [Deployed Contracts](DEPLOYED_CONTRACTS.md)
+
 ## Technical Report
 
 * [Full Report](../LTP_COMPREHENSIVE_REPORT.md)

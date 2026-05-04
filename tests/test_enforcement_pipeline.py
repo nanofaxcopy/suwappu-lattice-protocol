@@ -277,8 +277,8 @@ class TestVDFIntegration:
             network.add_node(f"node-{i}", f"region-{i % 3}")
 
         # Commit some data
-        from src.ltp.primitives import H
-        entity_id = H(b"test-entity")
+        from src.ltp.primitives import canonical_hash
+        entity_id = canonical_hash(b"test-entity")
         shards = [b"shard-" + bytes([i]) * 100 for i in range(8)]
         network.distribute_encrypted_shards(entity_id, shards)
 
@@ -456,8 +456,8 @@ class TestBackwardCompatibility:
         for i in range(5):
             network.add_node(f"node-{i}", f"region-{i}")
 
-        from src.ltp.primitives import H
-        entity_id = H(b"test-entity")
+        from src.ltp.primitives import canonical_hash
+        entity_id = canonical_hash(b"test-entity")
         shards = [b"shard-" + bytes([i]) * 100 for i in range(8)]
         network.distribute_encrypted_shards(entity_id, shards)
 

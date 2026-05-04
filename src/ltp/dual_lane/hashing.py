@@ -181,31 +181,3 @@ def internal_hash_bytes(data: bytes) -> bytes:
     """
     profile = _get_active_profile()
     return _hash_digest(data, profile.internal_hash_fn, raw=True)
-
-
-# ---------------------------------------------------------------------------
-# Deprecated H() / H_bytes() — delegate to canonical lane
-# ---------------------------------------------------------------------------
-
-def H(data: bytes) -> str:
-    """Content-addressing hash. Returns '<algo>:<hex>' string.
-
-    .. deprecated::
-        Use ``canonical_hash()`` for compliance-facing artifacts or
-        ``internal_hash()`` for internal operations.
-
-    Delegates to the canonical lane for backward compatibility.
-    """
-    return canonical_hash(data)
-
-
-def H_bytes(data: bytes) -> bytes:
-    """Content-addressing hash. Returns raw bytes (no prefix).
-
-    .. deprecated::
-        Use ``canonical_hash_bytes()`` for compliance-facing artifacts or
-        ``internal_hash_bytes()`` for internal operations.
-
-    Delegates to the canonical lane for backward compatibility.
-    """
-    return canonical_hash_bytes(data)
