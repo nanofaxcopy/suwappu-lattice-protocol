@@ -32,8 +32,10 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         app.state.gateway_service.start()
-        yield
-        app.state.gateway_service.stop()
+        try:
+            yield
+        finally:
+            app.state.gateway_service.stop()
 
     app = FastAPI(
         title="ETP Gateway VM",

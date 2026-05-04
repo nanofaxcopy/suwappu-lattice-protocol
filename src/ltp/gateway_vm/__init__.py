@@ -1,6 +1,7 @@
 """Gateway VM — POA attestation gateway for GSX devnet."""
 
 from .anchor_client import DevnetAnchorClient
+from .app import create_app
 from .config import GatewayVMConfig
 from .events import BridgeEvent
 from .finality import FinalityWatcher
@@ -14,6 +15,7 @@ from .writer import AttestationWriter, GatewayAttestation
 
 __all__ = [
     "DevnetAnchorClient",
+    "create_app",
     "GatewayVMConfig",
     "BridgeEvent",
     "FinalityWatcher",
