@@ -173,7 +173,7 @@ class GatewayVMService:
                         result.anchor_failures += 1
                         continue
                     result.retries_attempted += 1
-                    if not self._try_anchor(attestation, event, result):
+                    if not self._try_anchor(attestation, event, result, _from_retry=True):
                         remaining_retries.append((attestation, event, attempts + 1))
                 self._retry_queue = remaining_retries
 
@@ -251,6 +251,7 @@ class GatewayVMService:
         attestation: GatewayAttestation,
         event: BridgeEvent,
         result: GatewayVMTickResult,
+        _from_retry: bool = False,
     ) -> bool:
         """Attempt to anchor an attestation. Returns True on success."""
         try:
@@ -261,7 +262,8 @@ class GatewayVMService:
                               tx_hash=event.tx_hash[:16],
                               error=str(exc))
             result.anchor_failures += 1
-            self._retry_queue.append((attestation, event, 1))
+            if not _from_retry:
+                self._retry_queue.append((attestation, event, 1))
             return False
 
         # Mark as processed in replay DB
