@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import logging
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
+from ..bridge.challenge import ChallengeManager
 from ..keypair import KeyPair
+from ..observability.logging import StructuredLogger
 from .config import GatewayVMConfig
 from .events import BridgeEvent
 from .listener import EventListener
@@ -16,8 +17,6 @@ from .metrics import create_gateway_metrics
 from .replay import ReplayDB
 from .validator import EventValidator
 from .writer import AttestationWriter, GatewayAttestation
-
-logger = logging.getLogger(__name__)
 
 __all__ = ["GatewayVMService", "GatewayVMTickResult"]
 
@@ -61,6 +60,7 @@ class GatewayVMService:
         anchor_fn: Callable[[GatewayAttestation], str],
         is_signer_authorized: Callable[[], bool],
         metrics_registry=None,
+        clock: Optional[Callable[[], float]] = None,
     ) -> None:
         if operator_keypair is None:
             raise TypeError(
@@ -68,6 +68,10 @@ class GatewayVMService:
             )
         self._config = config
         self._keypair = operator_keypair
+        self._log = StructuredLogger(
+            f"etp.gateway.{config.gateway_id}",
+            default_fields={"gateway_id": config.gateway_id},
+        )
 
         # Components
         self._listener = EventListener(
@@ -105,6 +109,14 @@ class GatewayVMService:
         if metrics_registry is not None:
             self._metrics = create_gateway_metrics(metrics_registry)
 
+        # Challenge manager (optimistic mode only)
+        self._challenge_manager: Optional[ChallengeManager] = None
+        if config.challenge_mode == "optimistic":
+            self._challenge_manager = ChallengeManager(
+                challenge_period=config.challenge_period_seconds,
+                clock=clock,
+            )
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -121,13 +133,10 @@ class GatewayVMService:
             name=f"gateway-vm-{self._config.gateway_id}",
         )
         self._thread.start()
-        logger.info(
-            "GatewayVMService[%s] started (source=%d, dest=%d, interval=%.1fs)",
-            self._config.gateway_id,
-            self._config.source_chain_id,
-            self._config.dest_chain_id,
-            self._config.poll_interval_seconds,
-        )
+        self._log.info("service started",
+                       source_chain=self._config.source_chain_id,
+                       dest_chain=self._config.dest_chain_id,
+                       interval=self._config.poll_interval_seconds)
 
     def stop(self) -> None:
         """Signal shutdown and join thread."""
@@ -138,11 +147,7 @@ class GatewayVMService:
             self._thread = None
         if self._replay_db is not None:
             self._replay_db.close()
-        logger.info(
-            "GatewayVMService[%s] stopped (epoch=%d)",
-            self._config.gateway_id,
-            self._epoch,
-        )
+        self._log.info("service stopped", epoch=self._epoch)
 
     def tick(self) -> GatewayVMTickResult:
         """Execute a single gateway epoch (public for testing)."""
@@ -150,55 +155,63 @@ class GatewayVMService:
             self._epoch += 1
         result = GatewayVMTickResult(epoch=self._epoch)
 
-        with self._data_lock:
-            # --- 1. Process retry queue ---
-            remaining_retries: list[tuple[GatewayAttestation, BridgeEvent, int]] = []
-            for attestation, event, attempts in self._retry_queue:
-                if attempts >= self._config.max_retries:
-                    logger.warning(
-                        "Gateway: event %s exceeded max retries (%d), dropping",
-                        event.event_id[:32],
-                        self._config.max_retries,
-                    )
-                    result.anchor_failures += 1
-                    continue
-                result.retries_attempted += 1
-                if not self._try_anchor(attestation, event, result):
-                    remaining_retries.append((attestation, event, attempts + 1))
-            self._retry_queue = remaining_retries
+        with self._log.correlation_scope():
+            self._log.info("tick start", epoch=self._epoch)
 
-            # --- 2. Poll for new events ---
-            try:
-                events = self._listener.poll()
-            except Exception as exc:
-                logger.error("Gateway: poll failed: %s", exc)
-                result.error = f"poll failed: {exc}"
-                return result
+            with self._data_lock:
+                # --- 0. Tick challenge manager to auto-finalize expired windows ---
+                if self._challenge_manager is not None:
+                    self._challenge_manager.tick()
 
-            result.events_observed = len(events)
-            if self._metrics:
-                self._metrics["etp_gateway_events_observed"].inc(len(events))
+                # --- 1. Process retry queue ---
+                remaining_retries: list[tuple[GatewayAttestation, BridgeEvent, int]] = []
+                for attestation, event, attempts in self._retry_queue:
+                    if attempts >= self._config.max_retries:
+                        self._log.warning("max retries exceeded, dropping",
+                                          event_id=event.event_id[:32],
+                                          max_retries=self._config.max_retries)
+                        result.anchor_failures += 1
+                        continue
+                    result.retries_attempted += 1
+                    if not self._try_anchor(attestation, event, result):
+                        remaining_retries.append((attestation, event, attempts + 1))
+                self._retry_queue = remaining_retries
 
-            # --- 3. Validate and process each event ---
-            for event in events:
-                ok, reason = self._validator.validate(event)
-                if not ok:
-                    result.events_rejected += 1
-                    if self._metrics:
-                        self._metrics["etp_gateway_events_rejected"].inc(
-                            labels={"reason": reason.split(":")[0]}
-                        )
-                    logger.info("Gateway: rejected event %s: %s", event.tx_hash[:16], reason)
-                    continue
+                # --- 2. Poll for new events ---
+                try:
+                    events = self._listener.poll()
+                except Exception as exc:
+                    self._log.error("poll failed", error=str(exc))
+                    result.error = f"poll failed: {exc}"
+                    return result
 
-                # --- 4. Create attestation ---
-                attestation = self._writer.create_attestation(event)
+                result.events_observed = len(events)
+                if self._metrics:
+                    self._metrics["etp_gateway_events_observed"].inc(len(events))
 
-                # --- 5. Anchor to devnet ---
-                if self._try_anchor(attestation, event, result):
-                    result.events_accepted += 1
-                    if self._metrics:
-                        self._metrics["etp_gateway_events_accepted"].inc()
+                # --- 3. Validate and process each event ---
+                for event in events:
+                    ok, reason = self._validator.validate(event)
+                    if not ok:
+                        result.events_rejected += 1
+                        if self._metrics:
+                            self._metrics["etp_gateway_events_rejected"].inc(
+                                labels={"reason": reason.split(":")[0]}
+                            )
+                        self._log.info("event rejected",
+                                       event_id=event.event_id[:32],
+                                       tx_hash=event.tx_hash[:16],
+                                       reason=reason)
+                        continue
+
+                    # --- 4. Create attestation ---
+                    attestation = self._writer.create_attestation(event)
+
+                    # --- 5. Anchor to devnet ---
+                    if self._try_anchor(attestation, event, result):
+                        result.events_accepted += 1
+                        if self._metrics:
+                            self._metrics["etp_gateway_events_accepted"].inc()
 
         return result
 
@@ -209,6 +222,10 @@ class GatewayVMService:
     @property
     def epoch(self) -> int:
         return self._epoch
+
+    @property
+    def challenge_manager(self) -> Optional[ChallengeManager]:
+        return self._challenge_manager
 
     @property
     def retry_queue_size(self) -> int:
@@ -224,8 +241,8 @@ class GatewayVMService:
         while self._running:
             try:
                 self.tick()
-            except Exception:
-                logger.exception("Gateway: error in epoch %d", self._epoch)
+            except Exception as exc:
+                self._log.error("tick error", epoch=self._epoch, error=str(exc))
             if self._stop_event.wait(timeout=self._config.poll_interval_seconds):
                 break
 
@@ -239,9 +256,10 @@ class GatewayVMService:
         try:
             self._anchor_fn(attestation)
         except Exception as exc:
-            logger.warning(
-                "Gateway: anchor failed for %s: %s", event.tx_hash[:16], exc
-            )
+            self._log.warning("anchor failed",
+                              event_id=event.event_id[:32],
+                              tx_hash=event.tx_hash[:16],
+                              error=str(exc))
             result.anchor_failures += 1
             self._retry_queue.append((attestation, event, 1))
             return False
@@ -252,4 +270,11 @@ class GatewayVMService:
             tx_hash=event.tx_hash,
             block_number=event.block_number,
         )
+
+        # Open challenge window for optimistic mode
+        if self._challenge_manager is not None:
+            self._challenge_manager.open_challenge_window(
+                event.event_id, attestation.digest[:32]
+            )
+
         return True
