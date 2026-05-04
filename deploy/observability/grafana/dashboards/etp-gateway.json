@@ -1,0 +1,75 @@
+{
+  "dashboard": {
+    "uid": "etp-gateway-vm",
+    "title": "ETP Gateway VM",
+    "tags": ["etp", "gateway"],
+    "timezone": "browser",
+    "refresh": "15s",
+    "templating": {
+      "list": [
+        {
+          "name": "gateway_id",
+          "type": "query",
+          "query": "label_values(etp_gateway_events_observed, gateway_id)",
+          "datasource": { "uid": "prometheus" }
+        }
+      ]
+    },
+    "panels": [
+      {
+        "title": "Events Observed",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+        "targets": [{ "expr": "etp_gateway_events_observed{gateway_id=\"$gateway_id\"}" }]
+      },
+      {
+        "title": "Events Accepted",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+        "targets": [{ "expr": "etp_gateway_events_accepted{gateway_id=\"$gateway_id\"}" }]
+      },
+      {
+        "title": "Events Rejected",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+        "targets": [{ "expr": "etp_gateway_events_rejected{gateway_id=\"$gateway_id\"}" }]
+      },
+      {
+        "title": "Replay Rejections",
+        "type": "stat",
+        "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+        "targets": [{ "expr": "etp_gateway_replay_rejections{gateway_id=\"$gateway_id\"}" }]
+      },
+      {
+        "title": "Anchor Latency (p95)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+        "targets": [{ "expr": "histogram_quantile(0.95, rate(etp_gateway_anchor_latency_bucket{gateway_id=\"$gateway_id\"}[5m]))" }],
+        "fieldConfig": { "defaults": { "unit": "s" } }
+      },
+      {
+        "title": "Finality Wait (p95)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+        "targets": [{ "expr": "histogram_quantile(0.95, rate(etp_gateway_finality_wait_bucket{gateway_id=\"$gateway_id\"}[5m]))" }],
+        "fieldConfig": { "defaults": { "unit": "s" } }
+      },
+      {
+        "title": "Rejection Reasons",
+        "type": "piechart",
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+        "targets": [{ "expr": "etp_gateway_events_rejected{gateway_id=\"$gateway_id\"}", "legendFormat": "{{reason}}" }]
+      },
+      {
+        "title": "Events Rate (per minute)",
+        "type": "timeseries",
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+        "targets": [
+          { "expr": "rate(etp_gateway_events_observed{gateway_id=\"$gateway_id\"}[1m]) * 60", "legendFormat": "observed" },
+          { "expr": "rate(etp_gateway_events_accepted{gateway_id=\"$gateway_id\"}[1m]) * 60", "legendFormat": "accepted" },
+          { "expr": "rate(etp_gateway_events_rejected{gateway_id=\"$gateway_id\"}[1m]) * 60", "legendFormat": "rejected" }
+        ]
+      }
+    ]
+  }
+}

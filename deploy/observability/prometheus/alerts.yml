@@ -156,3 +156,46 @@ groups:
         annotations:
           summary: "Gossip peer timeout rate elevated on {{ $labels.node_id }}"
           description: "{{ $value }} timeouts/s — network degradation."
+
+  - name: etp-gateway
+    interval: 30s
+    rules:
+      - alert: ETPGatewayDown
+        expr: up{job="etp-gateway"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: gateway-vm
+        annotations:
+          summary: "Gateway VM {{ $labels.gateway_id }} is down"
+          description: "No metrics scraped from gateway {{ $labels.gateway_id }} for >2m."
+
+      - alert: ETPGatewayHighRejectionRate
+        expr: rate(etp_gateway_events_rejected[5m]) / rate(etp_gateway_events_observed[5m]) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: gateway-vm
+        annotations:
+          summary: "Gateway {{ $labels.gateway_id }} rejecting >50% of events"
+          description: "Rejection rate={{ $value | humanizePercentage }}. Check source chain finality and bridge contract."
+
+      - alert: ETPGatewayAnchorLatencyHigh
+        expr: histogram_quantile(0.95, rate(etp_gateway_anchor_latency_bucket[5m])) > 30
+        for: 5m
+        labels:
+          severity: warning
+          component: gateway-vm
+        annotations:
+          summary: "Gateway {{ $labels.gateway_id }} p95 anchor latency >30s"
+          description: "p95={{ $value }}s. Devnet RPC may be slow or congested."
+
+      - alert: ETPGatewayRetryQueueGrowing
+        expr: etp_gateway_retry_queue_size > 50
+        for: 10m
+        labels:
+          severity: warning
+          component: gateway-vm
+        annotations:
+          summary: "Gateway {{ $labels.gateway_id }} retry queue backing up"
+          description: "Queue size={{ $value }}. Anchoring is failing repeatedly."
