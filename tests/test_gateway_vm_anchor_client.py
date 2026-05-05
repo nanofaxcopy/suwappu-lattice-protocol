@@ -3,6 +3,13 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from src.ltp.keypair import KeyPair
+from src.ltp.gateway_vm.anchor_client import (
+    CircuitBreaker,
+    CircuitOpenError,
+    DevnetAnchorClient,
+    RateLimitedError,
+    TokenBucketRateLimiter,
+)
 
 
 @pytest.fixture(scope="module")
@@ -124,3 +131,148 @@ class TestAttestationToSubmission:
         assert sub.signer_vk_hash == attestation.signer_vk_fingerprint
         assert sub.target_chain_id == attestation.dest_chain_id
         assert sub.receipt_type == "GATEWAY_ATTEST"
+
+
+class TestCircuitBreaker:
+    def test_starts_closed(self):
+        cb = CircuitBreaker(failure_threshold=3)
+        assert cb.state == CircuitBreaker.CLOSED
+
+    def test_opens_after_threshold_failures(self):
+        cb = CircuitBreaker(failure_threshold=3)
+        for _ in range(3):
+            cb.record_failure()
+        assert cb.state == CircuitBreaker.OPEN
+
+    def test_stays_closed_below_threshold(self):
+        cb = CircuitBreaker(failure_threshold=3)
+        cb.record_failure()
+        cb.record_failure()
+        assert cb.state == CircuitBreaker.CLOSED
+
+    def test_success_resets_failure_count(self):
+        cb = CircuitBreaker(failure_threshold=3)
+        cb.record_failure()
+        cb.record_failure()
+        cb.record_success()
+        cb.record_failure()
+        assert cb.state == CircuitBreaker.CLOSED
+
+    def test_before_call_raises_when_open(self):
+        cb = CircuitBreaker(failure_threshold=1)
+        cb.record_failure()
+        with pytest.raises(CircuitOpenError):
+            cb.before_call()
+
+    def test_transitions_to_half_open_after_cooldown(self):
+        t = [0.0]
+        cb = CircuitBreaker(failure_threshold=1, cooldown_seconds=10.0, clock=lambda: t[0])
+        cb.record_failure()
+        assert cb.state == CircuitBreaker.OPEN
+
+        t[0] = 10.0
+        assert cb.state == CircuitBreaker.HALF_OPEN
+
+    def test_half_open_allows_call(self):
+        t = [0.0]
+        cb = CircuitBreaker(failure_threshold=1, cooldown_seconds=5.0, clock=lambda: t[0])
+        cb.record_failure()
+        t[0] = 5.0
+        cb.before_call()  # should not raise
+
+    def test_half_open_closes_on_success(self):
+        t = [0.0]
+        cb = CircuitBreaker(failure_threshold=1, cooldown_seconds=5.0, clock=lambda: t[0])
+        cb.record_failure()
+        t[0] = 5.0
+        cb.record_success()
+        assert cb.state == CircuitBreaker.CLOSED
+
+    def test_half_open_reopens_on_failure(self):
+        t = [0.0]
+        cb = CircuitBreaker(failure_threshold=1, cooldown_seconds=5.0, clock=lambda: t[0])
+        cb.record_failure()
+        t[0] = 5.0
+        assert cb.state == CircuitBreaker.HALF_OPEN
+        cb.record_failure()
+        assert cb.state == CircuitBreaker.OPEN
+
+
+class TestTokenBucketRateLimiter:
+    def test_allows_up_to_burst(self):
+        rl = TokenBucketRateLimiter(rate=10.0, burst=5, clock=lambda: 0.0)
+        results = [rl.acquire() for _ in range(5)]
+        assert all(results)
+        assert not rl.acquire()
+
+    def test_refills_over_time(self):
+        t = [0.0]
+        rl = TokenBucketRateLimiter(rate=10.0, burst=5, clock=lambda: t[0])
+        for _ in range(5):
+            rl.acquire()
+
+        t[0] = 0.5  # 0.5s * 10/s = 5 tokens refilled
+        results = [rl.acquire() for _ in range(5)]
+        assert all(results)
+
+    def test_rejects_when_empty(self):
+        rl = TokenBucketRateLimiter(rate=1.0, burst=1, clock=lambda: 0.0)
+        assert rl.acquire()
+        assert not rl.acquire()
+
+
+class TestClientWithCircuitBreaker:
+    def test_circuit_opens_after_failures(self, gateway_kp):
+        cb = CircuitBreaker(failure_threshold=2)
+        client = DevnetAnchorClient(
+            submit_fn=MagicMock(side_effect=RuntimeError("rpc down")),
+            circuit_breaker=cb,
+        )
+        attestation = _make_attestation(gateway_kp)
+
+        for _ in range(2):
+            with pytest.raises(RuntimeError):
+                client.submit_attestation(attestation)
+
+        with pytest.raises(CircuitOpenError):
+            client.submit_attestation(attestation)
+
+    def test_circuit_closes_on_success(self, gateway_kp):
+        call_count = {"n": 0}
+
+        def flaky(submission):
+            call_count["n"] += 1
+            if call_count["n"] <= 2:
+                raise RuntimeError("fail")
+            return "0xtx"
+
+        t = [0.0]
+        cb = CircuitBreaker(failure_threshold=2, cooldown_seconds=5.0, clock=lambda: t[0])
+        client = DevnetAnchorClient(submit_fn=flaky, circuit_breaker=cb)
+        attestation = _make_attestation(gateway_kp)
+
+        # Two failures open the circuit
+        for _ in range(2):
+            with pytest.raises(RuntimeError):
+                client.submit_attestation(attestation)
+        assert cb.state == CircuitBreaker.OPEN
+
+        # After cooldown, half-open allows a probe
+        t[0] = 5.0
+        result = client.submit_attestation(attestation)
+        assert result == "0xtx"
+        assert cb.state == CircuitBreaker.CLOSED
+
+
+class TestClientWithRateLimiter:
+    def test_rate_limited_raises(self, gateway_kp):
+        rl = TokenBucketRateLimiter(rate=1.0, burst=1, clock=lambda: 0.0)
+        client = DevnetAnchorClient(
+            submit_fn=MagicMock(return_value="0xtx"),
+            rate_limiter=rl,
+        )
+        attestation = _make_attestation(gateway_kp)
+
+        assert client.submit_attestation(attestation) == "0xtx"
+        with pytest.raises(RateLimitedError):
+            client.submit_attestation(attestation)

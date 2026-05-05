@@ -1,0 +1,25 @@
+# ETP Gateway VM — Docker Compose
+#
+# Usage:
+#   cp deploy/.env.gateway.example deploy/.env.gateway
+#   # Fill in required values in .env.gateway
+#   docker compose -f deploy/docker-compose.gateway.yml up --build
+
+services:
+  gateway:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.gateway
+    container_name: etp-gateway
+    restart: unless-stopped
+    env_file:
+      - .env.gateway
+    ports:
+      - "${ETP_GATEWAY_PORT:-8000}:8000"
+      - "${ETP_GATEWAY_VM_METRICS_PORT:-9090}:9090"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/gateway/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
