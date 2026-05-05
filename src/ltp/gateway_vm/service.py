@@ -61,6 +61,7 @@ class GatewayVMService:
         is_signer_authorized: Callable[[], bool],
         metrics_registry=None,
         clock: Optional[Callable[[], float]] = None,
+        start_block: int = 0,
     ) -> None:
         if operator_keypair is None:
             raise TypeError(
@@ -73,11 +74,13 @@ class GatewayVMService:
             default_fields={"gateway_id": config.gateway_id},
         )
 
-        # Components
+        # Components — start_block seeds the listener cursor near chain tip
+        # to avoid scanning the entire chain history on first boot.
         self._listener = EventListener(
             source_chain_id=config.source_chain_id,
             fetch_logs=fetch_logs,
             get_block_number=get_source_block_number,
+            start_block=start_block,
         )
         self._replay_db = ReplayDB(config.replay_db_path)
         self._validator = EventValidator(

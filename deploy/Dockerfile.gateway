@@ -24,8 +24,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml .
 COPY src/ src/
 
-# Install gateway + chain + crypto extras
-RUN pip install --no-cache-dir -e ".[gateway,chain,crypto]"
+# Install gateway + chain + production extras (production includes blake3, pqcrypto, pynacl)
+RUN pip install --no-cache-dir ".[gateway,chain,production]"
 
 # ---------------------------------------------------------------------------
 # Stage 2: Runtime

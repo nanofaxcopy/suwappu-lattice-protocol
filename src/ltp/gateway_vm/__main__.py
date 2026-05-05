@@ -61,15 +61,27 @@ def main() -> None:
 
     # --- Source chain RPC ---
     w3_source = Web3(Web3.HTTPProvider(config.source_rpc_url))
+    _bridge_addr = Web3.to_checksum_address(config.source_bridge_contract)
+
+    # Alchemy free-tier limits eth_getLogs to small block ranges (~5 blocks).
+    # Chunk large ranges to stay within the limit.
+    _LOG_CHUNK_SIZE = 5
 
     def fetch_logs(from_block: int, to_block: int) -> list[dict]:
-        return w3_source.eth.get_logs(
-            {
-                "fromBlock": from_block,
-                "toBlock": to_block,
-                "address": config.source_bridge_contract,
-            }
-        )
+        all_logs: list[dict] = []
+        cursor = from_block
+        while cursor <= to_block:
+            chunk_end = min(cursor + _LOG_CHUNK_SIZE - 1, to_block)
+            logs = w3_source.eth.get_logs(
+                {
+                    "fromBlock": cursor,
+                    "toBlock": chunk_end,
+                    "address": _bridge_addr,
+                }
+            )
+            all_logs.extend(logs)
+            cursor = chunk_end + 1
+        return all_logs
 
     def get_source_block_number() -> int:
         return w3_source.eth.block_number
@@ -86,6 +98,11 @@ def main() -> None:
     # --- Operator keypair (ML-DSA-65 for attestation signing) ---
     keypair = KeyPair.generate(config.gateway_id)
 
+    # --- Seed listener near chain tip (avoid scanning entire chain history) ---
+    # Use a small window — Alchemy free-tier limits eth_getLogs to ~5 blocks.
+    current_source_block = get_source_block_number()
+    start_block = max(0, current_source_block - 5)
+
     # --- Build service ---
     tracker = GatewayTracker()
     service = GatewayVMService(
@@ -96,6 +113,7 @@ def main() -> None:
         get_dest_block_number=get_dest_block_number,
         anchor_fn=anchor_client.as_anchor_fn(),
         is_signer_authorized=lambda: True,
+        start_block=start_block,
     )
 
     # --- Create FastAPI app and run ---
