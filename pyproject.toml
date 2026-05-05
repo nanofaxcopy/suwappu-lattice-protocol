@@ -76,6 +76,7 @@ dev = [
 
 [project.scripts]
 etp-node = "ltp.node.main:main"
+etp-gateway = "ltp.gateway_vm.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -83,3 +84,6 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+markers = [
+    "smoke: post-deploy smoke tests that require a live gateway (skip if not reachable)",
+]
