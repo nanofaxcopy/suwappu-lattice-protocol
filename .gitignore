@@ -50,7 +50,14 @@ docs/superpowers/
 
 # Bridge execution outputs
 bridge_results*.json
+
+# Key material — never commit. (gateway_keypair.json was previously committed and
+# is being rotated; broad patterns below so no keypair/key/cert slips in again.)
+*keypair*.json
+deploy/gateway_keypair.json
 bridge_operator_keypair.json
+*.key
+*.pem
 
 # Solidity / Foundry (contracts/)
 contracts/out/
