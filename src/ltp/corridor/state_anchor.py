@@ -1,24 +1,24 @@
-"""Per-chain state anchor — mirror of `gsx-db/crates/gsxdb-bridge/src/anchor/types.rs`
-and the Solidity surface `gsx-db/contracts/src/LTPAnchorRegistry.sol`.
+"""Per-chain state anchor — mirror of `suwappu-db/crates/suwappudb-bridge/src/anchor/types.rs`
+and the Solidity surface `suwappu-db/contracts/src/LTPAnchorRegistry.sol`.
 
-The gsx-db anchor is distinct from `gsx-lattice-protocol/contracts/src/LTPAnchorRegistry.sol`:
+The suwappu-db anchor is distinct from `suwappu-lattice-protocol/contracts/src/LTPAnchorRegistry.sol`:
 
 | Surface | Schema | Scope |
 |---|---|---|
-| `gsx-db` LTPAnchorRegistry | `(chainId, height, stateRoot, parent, mac)` | per-chain state-root anchor |
-| `gsx-lattice-protocol` LTPAnchorRegistry | per-entity commitment anchor (`anchorDigest`, `entityIdHash`, ...) | LTP commitment log |
+| `suwappu-db` LTPAnchorRegistry | `(chainId, height, stateRoot, parent, mac)` | per-chain state-root anchor |
+| `suwappu-lattice-protocol` LTPAnchorRegistry | per-entity commitment anchor (`anchorDigest`, `entityIdHash`, ...) | LTP commitment log |
 
-This module gives LTP a Python implementation of the **gsx-db** anchor so an
+This module gives LTP a Python implementation of the **suwappu-db** anchor so an
 LTP corridor witness can construct, hash, and verify the same anchor bytes
-that gsx-db's Rust crate and the Solidity contract operate on.
+that suwappu-db's Rust crate and the Solidity contract operate on.
 
 Two MAC backends are provided:
 
 - `compute_mac_blake3` — Rust-canonical, BLAKE3-keyed (matches
-  `gsxdb-bridge::compute_mac`).
+  `suwappudb-bridge::compute_mac`).
 - `compute_mac_keccak256` — Solidity phase-1 placeholder (matches the
-  `computeMac` function in `gsx-db/contracts/src/LTPAnchorRegistry.sol`).
-  Replaced by a BLAKE3 precompile in gsx-db sprint S11.
+  `computeMac` function in `suwappu-db/contracts/src/LTPAnchorRegistry.sol`).
+  Replaced by a BLAKE3 precompile in suwappu-db sprint S11.
 
 Likewise `hash_anchor_blake3` mirrors the Rust hash, `hash_anchor_keccak256`
 mirrors the Solidity hash. The Rust hash also folds in `auth_scheme`; the
@@ -48,7 +48,7 @@ class AuthScheme(IntEnum):
     """Authentication mode carried by an anchor.
 
     Wire encoding via the underlying `u8` discriminant — values are pinned
-    to match `gsx-db/crates/gsxdb-bridge/src/anchor/types.rs::AuthScheme`.
+    to match `suwappu-db/crates/suwappudb-bridge/src/anchor/types.rs::AuthScheme`.
     """
 
     BLAKE3_MAC = 0
@@ -93,7 +93,7 @@ def compute_mac_blake3(
     parent: bytes,
     key: bytes,
 ) -> bytes:
-    """BLAKE3-keyed MAC matching `gsxdb-bridge::compute_mac`."""
+    """BLAKE3-keyed MAC matching `suwappudb-bridge::compute_mac`."""
     if len(key) != 32:
         raise ValueError("MAC key must be 32 bytes")
     if len(state_root) != 32 or len(parent) != 32:
@@ -136,7 +136,7 @@ def compute_mac_keccak256(
 
 
 def hash_anchor_blake3(anchor: StateAnchor) -> bytes:
-    """Rust-canonical anchor hash — `gsxdb-bridge::Anchor::hash`."""
+    """Rust-canonical anchor hash — `suwappudb-bridge::Anchor::hash`."""
     _require_blake3()
     h = _blake3.blake3()
     h.update(b"GSXDB-ANCHOR/HASH")
@@ -154,7 +154,7 @@ def hash_anchor_keccak256(anchor: StateAnchor) -> bytes:
 
     Note: the Solidity version does NOT fold in `auth_scheme`, so anchors
     that differ only in `auth_scheme` will hash to the same value here.
-    The Rust variant disambiguates them; the gsx-db S11 cross-parity sprint
+    The Rust variant disambiguates them; the suwappu-db S11 cross-parity sprint
     will reconcile the two encodings.
     """
     blob = (

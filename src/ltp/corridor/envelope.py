@@ -83,7 +83,7 @@ class OnChainCommitment:
         """Enforce the exact §10.2 constant. Only ML-KEM-1024 + 96 + 32 = 1,696
         gets close; under ML-KEM-768 the total is 1,216. Neither hits 1,600
         exactly — the constant is a paper-level approximation. Strict mode is
-        provided for forward-compatibility once gsx-dag pins a precise layout.
+        provided for forward-compatibility once suwappu-dag pins a precise layout.
         """
         if self.total_bytes != ON_CHAIN_COMMITMENT_BYTES:
             raise EnvelopeSizeError(

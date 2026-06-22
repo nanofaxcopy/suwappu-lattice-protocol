@@ -15,7 +15,7 @@ Encoding rules:
 Wire format is designed to be translatable to CBOR (RFC 8949) for future
 cross-language interop with Rust/Go/TS siblings.
 
-Reference: GSX_PRE_BLOCKCHAIN_ROADMAP.md §2.1
+Reference: SUWAPPU_PRE_BLOCKCHAIN_ROADMAP.md §2.1
 """
 
 from __future__ import annotations

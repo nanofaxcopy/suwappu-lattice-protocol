@@ -1,4 +1,4 @@
-"""GSX Pre-Blockchain Trust Packaging Layer — Full Demo"""
+"""SUWAPPU Pre-Blockchain Trust Packaging Layer — Full Demo"""
 
 import time
 
@@ -72,7 +72,7 @@ print(f"  Network nodes: {len(net.nodes)}")
 
 # ── Commit ────────────────────────────────────────────────────────────────
 print("\n▸ COMMIT Phase")
-entity = Entity(content=b"GSX trust packaging demo payload", shape="text/plain")
+entity = Entity(content=b"SUWAPPU trust packaging demo payload", shape="text/plain")
 eid, record, cek = proto.commit(entity, alice)
 print(f"  Entity ID:      {eid[:48]}...")
 print(f"  Sender:         {record.sender_id}")
@@ -378,6 +378,6 @@ print(
     f"  Sequence tracker state:    alice@seq={tracker.current_sequence(alice.vk)}, bob@seq={tracker.current_sequence(bob.vk)}"
 )
 print("=" * 74)
-print("  GSX Pre-Blockchain Trust Packaging Layer operational.")
+print("  SUWAPPU Pre-Blockchain Trust Packaging Layer operational.")
 print("  All trust artifacts ready for on-chain anchoring.")
 print("=" * 74)

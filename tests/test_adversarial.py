@@ -1,5 +1,5 @@
 """
-Adversarial tests for the GSX Pre-Blockchain Trust Packaging Layer.
+Adversarial tests for the SUWAPPU Pre-Blockchain Trust Packaging Layer.
 
 Proves that the system correctly *rejects* invalid/tampered inputs —
 not just that valid inputs pass. Every test in this file asserts a
