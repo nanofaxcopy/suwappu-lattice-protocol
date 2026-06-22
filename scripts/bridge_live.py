@@ -296,12 +296,16 @@ def main():
     nonce = 1
 
     if args.direction in ("suwappu-to-base", "both"):
-        r = execute_bridge("suwappu_to_base", protocol, operator_kp, suwappu_config, base_config, nonce)
+        r = execute_bridge(
+            "suwappu_to_base", protocol, operator_kp, suwappu_config, base_config, nonce
+        )
         results["transfers"].append(r)
         nonce += 1
 
     if args.direction in ("base-to-suwappu", "both"):
-        r = execute_bridge("base_to_suwappu", protocol, operator_kp, base_config, suwappu_config, nonce)
+        r = execute_bridge(
+            "base_to_suwappu", protocol, operator_kp, base_config, suwappu_config, nonce
+        )
         results["transfers"].append(r)
 
     # Write results

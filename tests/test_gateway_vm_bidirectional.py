@@ -145,7 +145,9 @@ class TestBidirectionalIsolation:
         )
 
         base_log = _make_raw_log("0xshared_hash", 100, "0x79eF1B7914f98C5C1404617449AB1f377c475996")
-        suwappu_log = _make_raw_log("0xshared_hash", 100, "0xB29d8BFF4973D1D7bcB10E32112EBB8fdd530bF4")
+        suwappu_log = _make_raw_log(
+            "0xshared_hash", 100, "0xB29d8BFF4973D1D7bcB10E32112EBB8fdd530bF4"
+        )
 
         base_anchor = MagicMock(return_value="0xb")
         suwappu_anchor = MagicMock(return_value="0xg")
