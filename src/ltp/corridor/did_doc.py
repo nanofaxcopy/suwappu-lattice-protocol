@@ -8,7 +8,7 @@ production parity with the full Rust validator lands when the suwappu-precompile
 crate is fully ported.
 
 The canonical hash uses BLAKE3 (matching the Rust crate) with the
-`SUWAPPU-DID-DOC-V1` domain tag and big-endian u32 length prefixes for every
+`GSX-DID-DOC-V1` domain tag and big-endian u32 length prefixes for every
 variable-length field. Discriminant bytes for relationships and key
 algorithms are pinned:
 
@@ -127,7 +127,7 @@ class DidDocument:
         if not _blake3_available:
             raise RuntimeError("blake3 library not installed; install with `pip install blake3`")
         h = _blake3.blake3()
-        h.update(b"SUWAPPU-DID-DOC-V1")
+        h.update(b"GSX-DID-DOC-V1")
         h.update(self.id)
 
         # Verification methods (insertion order preserved on Python side;

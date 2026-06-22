@@ -25,7 +25,7 @@ from src.ltp.verify import verify_envelope, verify_merkle_proof, verify_receipt,
 reset_poc_state()
 
 print("=" * 74)
-print("  SUWAPPU PRE-BLOCKCHAIN TRUST PACKAGING LAYER — FULL DEMO")
+print("  GSX PRE-BLOCKCHAIN TRUST PACKAGING LAYER — FULL DEMO")
 print("=" * 74)
 
 # ── Canonical Encoding ───────────────────────────────────────────────────
