@@ -12,7 +12,7 @@ Architecture:
 All tags follow the format: b"GSX-LTP:<name>:v<N>\\x00"
 The trailing null byte acts as a separator to prevent prefix collisions.
 
-Reference: GSX_PRE_BLOCKCHAIN_ROADMAP.md §2.2
+Reference: SUWAPPU_PRE_BLOCKCHAIN_ROADMAP.md §2.2
 """
 
 from __future__ import annotations

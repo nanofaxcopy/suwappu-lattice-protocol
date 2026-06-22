@@ -1,6 +1,6 @@
 """LTP Commitment-Node data-availability SLA (paper §10.2).
 
-Wire-compatible Python mirror of `gsx-dag/crates/gsx-ltp/src/da.rs`. The
+Wire-compatible Python mirror of `suwappu-dag/crates/suwappu-ltp/src/da.rs`. The
 constant 1,600-byte on-chain commitment of paper §10.2 leaves the variable-
 size payload off-chain on Commitment Nodes addressed by SHA3-256 CID. The SLA
 predicate bounds retention and retrieval latency, and surfaces breach reasons

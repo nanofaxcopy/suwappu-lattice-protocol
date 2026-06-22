@@ -46,7 +46,7 @@ class TestTagRegistry:
         for name, tag in _ALL_TAGS.items():
             assert tag.endswith(b"\x00"), f"{name} missing null terminator"
 
-    def test_new_tags_follow_gsx_format(self):
+    def test_new_tags_follow_suwappu_format(self):
         new_tags = {k: v for k, v in _ALL_TAGS.items() if k.startswith("DOMAIN_")}
         for name, tag in new_tags.items():
             assert tag.startswith(b"GSX-LTP:"), f"{name} doesn't start with GSX-LTP:"

@@ -1,6 +1,6 @@
 """Length-prefixed SHA3-256 domain hash.
 
-Wire-compatible with `gsx-dag/crates/gsx-crypto/src/hash.rs::sha3_256_domain`:
+Wire-compatible with `suwappu-dag/crates/suwappu-crypto/src/hash.rs::sha3_256_domain`:
 
     H(len(tag) as u32 BE || tag || data)
 
@@ -18,7 +18,7 @@ import hashlib
 def sha3_256_domain(tag: bytes, data: bytes) -> bytes:
     """Compute the length-prefixed domain-separated SHA3-256 digest.
 
-    Matches `gsx_crypto::hash::sha3_256_domain` in the gsx-dag workspace.
+    Matches `suwappu_crypto::hash::sha3_256_domain` in the suwappu-dag workspace.
     """
     if len(tag) > 0xFFFFFFFF:
         raise ValueError("tag length exceeds u32::MAX")
