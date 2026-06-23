@@ -25,13 +25,13 @@ from src.ltp.verify import verify_envelope, verify_merkle_proof, verify_receipt,
 reset_poc_state()
 
 print("=" * 74)
-print("  GSX PRE-BLOCKCHAIN TRUST PACKAGING LAYER — FULL DEMO")
+print("  SUWAPPU PRE-BLOCKCHAIN TRUST PACKAGING LAYER — FULL DEMO")
 print("=" * 74)
 
 # ── Canonical Encoding ───────────────────────────────────────────────────
 print("\n▸ Canonical Object Encoding")
 enc = (
-    CanonicalEncoder(b"GSX-LTP:demo:v1\x00")
+    CanonicalEncoder(b"SUWAPPU-LTP:demo:v1\x00")
     .string("hello")
     .uint64(42)
     .float64(3.14159)
@@ -40,7 +40,7 @@ enc = (
     .finalize()
 )
 print(f"  Encoded blob: {len(enc)} bytes")
-print(f"  Tag prefix:   GSX-LTP:demo:v1\\x00")
+print(f"  Tag prefix:   SUWAPPU-LTP:demo:v1\\x00")
 print(f"  Hex preview:  {enc[:32].hex()}...")
 
 # ── Domain Separation ────────────────────────────────────────────────────

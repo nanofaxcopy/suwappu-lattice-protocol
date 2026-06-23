@@ -26,10 +26,10 @@ from ltp.corridor import (
 # values come from the Python sha3_256_domain implementation, which is the
 # byte-exact mirror of `suwappu_crypto::hash::sha3_256_domain` —
 # `H(len(tag) as u32 BE || tag || data)`.
-ATTEST_DIGEST_HEX = "b1dc6381728e0d2c78bbc3176ece95917eede7303ffffc940a13d7c865aa2b30"
-CID_ALPHA_HEX = "a03450af1b7cbb3bc9b074a7ef2e8d29144af0aa1954c2076f4e299a0a0388cc"
-CID_BETA_HEX = "910f3f97fc8d14500ff55b7bb7d0164f1fad74ff56793c042b2fe6c2d5931ca0"
-DID_STARK_DIGEST_HEX = "dea522015bc0da44dafa77e5216e53d48f10707e29b5da7b8d363ca863f71c52"
+ATTEST_DIGEST_HEX = "383f3a7fcf1b5e5e37d483145ce8e95b1a46c2d0cf038383a348f7ef60b037d2"
+CID_ALPHA_HEX = "368cae7527b27ceb8232352f889e4c3736e45927f8c186039aa27f273c6508bf"
+CID_BETA_HEX = "0defe348eaa4d7fbb4366d839cde4b5f6eea5d094e7e4f09118de748161366b8"
+DID_STARK_DIGEST_HEX = "b250098d46fa1538248ad6382c8da58352bf3bc4d6b9c9f92b07f628185d2d15"
 
 
 def test_constants_match_paper() -> None:

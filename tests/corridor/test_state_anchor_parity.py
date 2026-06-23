@@ -27,12 +27,12 @@ KEY = bytes([1] * 32)
 # These come from the parity fixture; the Solidity contract computes the
 # same bytes via Keccak256 (see `LTPAnchorRegistry.computeMac` /
 # `hashAnchor`).
-SOLIDITY_MAC_HEX = "f70120a7b5c85c4be4b147b152e0284b30aa7ba49530e9aeb481561d38199c7d"
-SOLIDITY_HASH_HEX = "f661f063e589f3241c1855e28368fa8daa16de51afb6335ec3340a52bb941fee"
+SOLIDITY_MAC_HEX = "b82cd56954458dad3dee397928f1c91674a62b086d8edfd8418f3ef3f5e48ef2"
+SOLIDITY_HASH_HEX = "3c0af8631fdec59fb35b07bb493530bc66417573e0528b45b45a89af171826ac"
 
 # BLAKE3 path (Rust-canonical) — only run when blake3 is installed.
-BLAKE3_MAC_HEX = "047ac7c1dbc9e323e244d3a20e537b4c0ad2709d4712762b067c83a3751cbe4d"
-BLAKE3_HASH_HEX = "d580aced8d776279d779598553385855dbd8f115d5db2b86aa2c0012c792fd72"
+BLAKE3_MAC_HEX = "bc273659d47f34a82ec401b382e14f4383d4ba672b8a2eaccded66e3f897772a"
+BLAKE3_HASH_HEX = "75a3cbc07c4d817601f8119d7146d7d6a92ef70841a62369bffcb877ad952116"
 
 
 def _blake3_available() -> bool:

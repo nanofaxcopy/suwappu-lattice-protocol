@@ -49,7 +49,7 @@ class LatencyExceeded(DaError):
 
 @dataclass(frozen=True, order=True)
 class Cid:
-    """SHA3-256 content identifier under the GSX-LTP-CID-V1 tag."""
+    """SHA3-256 content identifier under the SUWAPPU-LTP-CID-V1 tag."""
 
     value: bytes
 
