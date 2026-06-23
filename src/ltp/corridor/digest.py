@@ -6,7 +6,7 @@ Wire-compatible with `suwappu-dag/crates/suwappu-crypto/src/hash.rs::sha3_256_do
 
 This is intentionally distinct from LTP's existing `domain_hash_bytes` helper,
 which prepends the domain tag without a length prefix and uses a different tag
-encoding (`GSX-LTP:name:v1\\x00`). The corridor surface lives on the cross-repo
+encoding (`SUWAPPU-LTP:name:v1\\x00`). The corridor surface lives on the cross-repo
 wire so it must use the exact byte layout the DAG L1 publishes.
 """
 

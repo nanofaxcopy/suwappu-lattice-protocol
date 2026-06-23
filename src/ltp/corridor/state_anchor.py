@@ -100,7 +100,7 @@ def compute_mac_blake3(
         raise ValueError("state_root and parent must be 32 bytes")
     _require_blake3()
     h = _blake3.blake3(key=key)
-    h.update(b"GSXDB-ANCHOR/MAC")
+    h.update(b"SUWAPPUDB-ANCHOR/MAC")
     h.update(chain_id.to_bytes(4, "big"))
     h.update(height.to_bytes(8, "big"))
     h.update(state_root)
@@ -118,14 +118,14 @@ def compute_mac_keccak256(
     """Keccak256 placeholder MAC matching the Solidity contract.
 
     Mirrors `LTPAnchorRegistry.computeMac` byte-for-byte:
-    `keccak256("GSXDB-ANCHOR/MAC" || key || chainId || height || stateRoot || parent)`
+    `keccak256("SUWAPPUDB-ANCHOR/MAC" || key || chainId || height || stateRoot || parent)`
     """
     if len(key) != 32:
         raise ValueError("MAC key must be 32 bytes")
     if len(state_root) != 32 or len(parent) != 32:
         raise ValueError("state_root and parent must be 32 bytes")
     blob = (
-        b"GSXDB-ANCHOR/MAC"
+        b"SUWAPPUDB-ANCHOR/MAC"
         + key
         + chain_id.to_bytes(4, "big")
         + height.to_bytes(8, "big")
@@ -139,7 +139,7 @@ def hash_anchor_blake3(anchor: StateAnchor) -> bytes:
     """Rust-canonical anchor hash — `suwappudb-bridge::Anchor::hash`."""
     _require_blake3()
     h = _blake3.blake3()
-    h.update(b"GSXDB-ANCHOR/HASH")
+    h.update(b"SUWAPPUDB-ANCHOR/HASH")
     h.update(anchor.chain_id.to_bytes(4, "big"))
     h.update(anchor.height.to_bytes(8, "big"))
     h.update(anchor.state_root)
@@ -158,7 +158,7 @@ def hash_anchor_keccak256(anchor: StateAnchor) -> bytes:
     will reconcile the two encodings.
     """
     blob = (
-        b"GSXDB-ANCHOR/HASH"
+        b"SUWAPPUDB-ANCHOR/HASH"
         + anchor.chain_id.to_bytes(4, "big")
         + anchor.height.to_bytes(8, "big")
         + anchor.state_root

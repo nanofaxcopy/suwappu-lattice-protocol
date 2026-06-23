@@ -17,9 +17,9 @@ LTP_ATTESTATION_QUORUM_SIZE = 9
 
 # Domain tags. These are passed to `sha3_256_domain(tag, data)` exactly as
 # encoded here so the resulting digests match the Rust crate.
-DOMAIN_TAG_ATTEST = b"GSX-LTP-ATTEST-V1"
-DOMAIN_TAG_CID = b"GSX-LTP-CID-V1"
-DOMAIN_TAG_DID_STARK = b"GSX-DID-STARK-V1"
+DOMAIN_TAG_ATTEST = b"SUWAPPU-LTP-ATTEST-V1"
+DOMAIN_TAG_CID = b"SUWAPPU-LTP-CID-V1"
+DOMAIN_TAG_DID_STARK = b"SUWAPPU-DID-STARK-V1"
 
 # Proof-of-possession domain for corridor SuperNode registration. Closes
 # LTP-A-015 (Boneh-Drijvers-Neven rogue-key attack on aggregate BLS) by

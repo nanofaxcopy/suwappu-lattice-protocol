@@ -2,7 +2,7 @@
 
 Wire-compatible Python mirror of `suwappu-dag/crates/suwappu-ltp/src/did_stark.rs`.
 The load-bearing part for the cross-repo wire is `DidRotationStatement.digest()`
-— SHA3-256 with the `GSX-DID-STARK-V1` domain tag over a fixed byte layout.
+— SHA3-256 with the `SUWAPPU-DID-STARK-V1` domain tag over a fixed byte layout.
 
 The DID-document object graph (verification methods, relationships) lives in
 `suwappu-precompiles` on the Rust side and has no Python mirror yet, so this

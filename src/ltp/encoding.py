@@ -31,7 +31,7 @@ class CanonicalEncoder:
 
     Usage:
         encoded = (
-            CanonicalEncoder(b"GSX-LTP:commit-record:v1\\x00")
+            CanonicalEncoder(b"SUWAPPU-LTP:commit-record:v1\\x00")
             .string(record.entity_id)
             .uint64(record.sequence)
             .raw_bytes(record.root_hash)
@@ -46,7 +46,7 @@ class CanonicalEncoder:
         """Initialize with an object tag that prefixes every encoded blob.
 
         Args:
-            object_tag: Domain-separated tag, e.g. b"GSX-LTP:commit-record:v1\\x00"
+            object_tag: Domain-separated tag, e.g. b"SUWAPPU-LTP:commit-record:v1\\x00"
         """
         if not object_tag:
             raise ValueError("object_tag must not be empty")
