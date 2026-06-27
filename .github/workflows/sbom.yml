@@ -1,0 +1,43 @@
+name: SBOM
+
+# Generates a CycloneDX Software Bill of Materials for the repository and
+# attaches it to each published GitHub Release. Syft scans the working tree
+# (Python SDK + Solidity sources) for declared and transitive components.
+#
+# Purely additive: this workflow never modifies source, contract addresses,
+# or the tagged commit — it only produces and uploads an SBOM artifact.
+#
+# A committed, point-in-time SBOM also lives at
+# sbom/suwappu-lattice-protocol.cdx.json (regenerated from the declared
+# Python dependency set with the pip / PyPI toolchain).
+#
+# NOTE: GitHub Actions billing is currently blocked for this org, so this
+# workflow will not execute until billing is restored. It is committed
+# SHA-pinned and ready so it runs unchanged once enabled.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # upload the generated SBOM as a release asset
+
+jobs:
+  sbom:
+    name: Generate CycloneDX SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      # LTP-A-025: SHA-pin every new Action by commit SHA, not tag.
+      - name: Generate SBOM (CycloneDX JSON)
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0.24.0
+        with:
+          path: .
+          format: cyclonedx-json
+          artifact-name: suwappu-lattice-protocol.cdx.json
+          output-file: suwappu-lattice-protocol.cdx.json
+          # Attach the SBOM to the GitHub Release when triggered by a release.
+          upload-release-assets: true
