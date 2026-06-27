@@ -395,6 +395,37 @@ For external auditors and security researchers:
 - **Internal-testing charter:** [SECURITY_TESTING.md](SECURITY_TESTING.md)
   — authorization and scope rules for red-team campaigns.
 
+## Supply chain
+
+Supply-chain transparency tooling for this repository. These are
+machine-generated inventories and automated posture checks — not a
+third-party security audit and not a SOC 2 attestation.
+
+- **Software Bill of Materials (SBOM):** a CycloneDX 1.6 JSON SBOM is
+  committed at [`sbom/suwappu-lattice-protocol.cdx.json`](sbom/suwappu-lattice-protocol.cdx.json).
+  It is generated from the project's *declared* Python dependency set
+  (the `[project.optional-dependencies]` extras in `pyproject.toml`)
+  using the pip / PyPI toolchain and `cyclonedx-bom`, with every
+  component pinned as `pkg:pypi/<name>@<version>`. The core library
+  itself declares zero required runtime dependencies (stdlib only); the
+  SBOM captures the optional crypto, chain, gateway, federation and
+  related extras plus their transitive closure.
+- **Release SBOMs ([`.github/workflows/sbom.yml`](.github/workflows/sbom.yml)):**
+  on every published GitHub Release, Syft (`anchore/sbom-action`) scans
+  the working tree and attaches a freshly generated CycloneDX SBOM as a
+  release asset. Also runnable on demand via `workflow_dispatch`.
+- **OpenSSF Scorecard ([`.github/workflows/scorecard.yml`](.github/workflows/scorecard.yml)):**
+  weekly (and on push to `main`) the `ossf/scorecard-action` evaluates
+  supply-chain posture and uploads SARIF to the GitHub Security tab.
+  Results are kept internal (`publish_results: false`); there is no
+  public Scorecard badge.
+
+All workflow Actions are SHA-pinned by commit (audit finding LTP-A-025).
+GitHub Actions billing is currently disabled for this organization, so
+the two workflows above are committed ready-to-run but will not execute
+until billing is restored; the committed SBOM is the value-today
+artifact in the meantime.
+
 ## License
 
 MIT License. See [LICENSE](LICENSE).
