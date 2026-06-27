@@ -5,7 +5,14 @@
 If you discover a security vulnerability in the Entanglement Transfer Protocol,
 please report it responsibly.
 
-**Email:** security@suwappu.network
+**Preferred:** Open a private report via GitHub Private Vulnerability Reporting:
+<https://github.com/Suwappu-Labs/suwappu-lattice-protocol/security/advisories/new>
+
+**Email:** layerinfinite@gmail.com
+
+> Note: the branded alias `security@suwappu.network` is aspirational and not
+> yet live — mail sent there may not route. Use the GitHub advisory link or
+> the email above until the branded alias is announced as active.
 
 Please include:
 - Description of the vulnerability

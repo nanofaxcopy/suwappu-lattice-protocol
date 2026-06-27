@@ -92,7 +92,7 @@ public-surface promise and the cross-version compatibility matrix.
   - `src/ltp/network/` — gRPC client/server with 7 RPCs, RemoteNode proxy
   - `src/ltp/storage/` — Memory, SQLite (WAL mode), Filesystem shard stores
   - `src/ltp/verify/` — Pure verification SDK (no state, no side effects)
-  - `domain.py` — 11 domain separation tags (`GSX-LTP:*`)
+  - `domain.py` — 11 domain separation tags (`SUWAPPU-LTP:*`)
   - `encoding.py` — Deterministic canonical binary serialization
   - `envelope.py` — ML-DSA-65 signed envelope wrapper
   - `receipt.py` — Approval receipts with RFC 8392 temporal semantics

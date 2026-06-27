@@ -56,7 +56,7 @@ use suwappu_crypto::bls::{sign, BLS_DST};
 
 // 1. Each super-node signs the canonical digest of the payload.
 let payload = AttestationPayload { /* source_chain, target_chain, source_height, state_root, timestamp_round */ };
-let digest = payload.canonical_digest();        // length-prefixed SHA3-256 under "GSX-LTP-ATTEST-V1"
+let digest = payload.canonical_digest();        // length-prefixed SHA3-256 under "SUWAPPU-LTP-ATTEST-V1"
 let partial = sign(&sk, &digest, BLS_DST, &[]); // BLS_DST is identical to BLS_CORRIDOR_DST in Python
 
 // 2. The corridor leader gathers >=7 partials and aggregates.
