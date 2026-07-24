@@ -1,10 +1,17 @@
 # Unified Tokenomics — SUWP Across suwappubot, suwappu-dag, and LTP
 
-> **Status:** adopted. This is the cross-repo economic constitution referenced from
-> `suwappu-dag/ROADMAP.md` (previously a dangling citation to a nonexistent
-> `Suwappu-Labs/suwappu-papers` repo — that repo was never created; the LTP whitepaper
-> lives in this repo at [`docs/WHITEPAPER.md`](../WHITEPAPER.md)) and from
-> `suwappu-dag/docs/testnet/POINTS.md`.
+> **Status: SUPERSEDED.** See
+> [`DEFERRED_TOKEN_ARCHITECTURE.md`](DEFERRED_TOKEN_ARCHITECTURE.md). This document's
+> naming-collision fix (SUWAPPU = SUWP, one asset) still stands — that part was
+> correct and isn't revisited. What's superseded is the premise underneath it: that a
+> SUWP token needs to exist, and needs to be staked, before the bridge or the chain can
+> function. It doesn't. Kept for history; do not build against this document without
+> reading the superseding one first.
+>
+> This is the cross-repo economic constitution referenced from `suwappu-dag/ROADMAP.md`
+> (previously a dangling citation to a nonexistent `Suwappu-Labs/suwappu-papers` repo —
+> that repo was never created; the LTP whitepaper lives in this repo at
+> [`docs/WHITEPAPER.md`](../WHITEPAPER.md)) and from `suwappu-dag/docs/testnet/POINTS.md`.
 
 ## 1. The question this answers
 
