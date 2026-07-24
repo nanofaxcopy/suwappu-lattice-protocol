@@ -51,7 +51,7 @@ _VERIFY_ABI = [
 _MULTISIG_ABI = [
     {
         "type": "function",
-        "name": "required",
+        "name": "threshold",
         "inputs": [],
         "outputs": [{"name": "", "type": "uint256"}],
         "stateMutability": "view",
@@ -186,7 +186,7 @@ def verify_deployment(
                 address=Web3.to_checksum_address(multisig_address),
                 abi=_MULTISIG_ABI,
             )
-            threshold = multisig.functions.required().call()
+            threshold = multisig.functions.threshold().call()
             result["threshold"] = threshold
             if expected_threshold is not None and threshold != expected_threshold:
                 failed += 1
