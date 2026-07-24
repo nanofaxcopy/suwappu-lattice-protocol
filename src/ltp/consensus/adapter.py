@@ -1,4 +1,4 @@
-"""MysticetiAdapter — real ConsensusAdapter implementation (Spec D1b §6)."""
+"""DagBftAdapter — real ConsensusAdapter implementation (Spec D1b §6)."""
 
 from __future__ import annotations
 
@@ -24,11 +24,11 @@ from ..execution.committee.dkg.threshold_signing import (
 )
 from ..execution.types import OrderedBatch
 
-__all__ = ["MysticetiAdapter"]
+__all__ = ["DagBftAdapter"]
 
 
-class MysticetiAdapter:
-    """Implements ConsensusAdapter — connects Mysticeti engine to execution pipeline.
+class DagBftAdapter:
+    """Implements ConsensusAdapter — connects the DAG-BFT engine to execution pipeline.
 
     Orchestrates ValidatorSet, BLSCertificateManager, LocalConsensusBackend,
     and CommitteeSync.

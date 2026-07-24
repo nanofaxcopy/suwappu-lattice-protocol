@@ -5,7 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Iterator
 
-from .engine import LocalMysticetiEngine
+from .engine import LocalDagBftEngine
 from .faults import FaultConfig
 from .types import CommitDecision
 
@@ -15,7 +15,7 @@ __all__ = ["ConsensusBackend", "LocalConsensusBackend"]
 class ConsensusBackend(ABC):
     """Abstract interface for a consensus engine.
 
-    LocalConsensusBackend wraps the in-process Mysticeti engine.
+    LocalConsensusBackend wraps the in-process DAG-BFT engine.
     Future GrpcConsensusBackend (D2+) will implement the same contract.
     """
 
@@ -51,7 +51,7 @@ class ConsensusBackend(ABC):
 
 
 class LocalConsensusBackend(ConsensusBackend):
-    """Wraps LocalMysticetiEngine. All methods delegate directly."""
+    """Wraps LocalDagBftEngine. All methods delegate directly."""
 
     def __init__(
         self,
@@ -60,7 +60,7 @@ class LocalConsensusBackend(ConsensusBackend):
         round_timeout_ms: int = 1000,
     ) -> None:
         self._round_timeout_ms = round_timeout_ms
-        self._engine = LocalMysticetiEngine(
+        self._engine = LocalDagBftEngine(
             num_validators,
             fault_tolerance=fault_tolerance,
             round_timeout_ms=round_timeout_ms,
@@ -94,7 +94,7 @@ class LocalConsensusBackend(ConsensusBackend):
         return self._engine._n
 
     def rebuild(self, num_validators: int, fault_tolerance: int | None = None) -> None:
-        self._engine = LocalMysticetiEngine(
+        self._engine = LocalDagBftEngine(
             num_validators,
             fault_tolerance=fault_tolerance,
             round_timeout_ms=self._round_timeout_ms,

@@ -1,10 +1,10 @@
-"""Tests for MysticetiAdapter lifecycle and CommitteeSync integration (Spec D1b §5-6)."""
+"""Tests for DagBftAdapter lifecycle and CommitteeSync integration (Spec D1b §5-6)."""
 
 import hashlib
 
 import pytest
 
-from src.ltp.consensus.adapter import MysticetiAdapter
+from src.ltp.consensus.adapter import DagBftAdapter
 from src.ltp.consensus.events import ConsensusEvent, ConsensusEventType
 from src.ltp.consensus.validator_set import ValidatorSet
 from src.ltp.execution.committee.dkg.session import DKGSession
@@ -144,14 +144,14 @@ def dkg_4():
 class TestProtocolCompliance:
     def test_satisfies_consensus_adapter_protocol(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         assert isinstance(adapter, ConsensusAdapter)
         adapter.stop()
 
     def test_consensus_type_returns_mysticeti_dag(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         assert adapter.consensus_type() == "mysticeti-dag"
 
 
@@ -163,7 +163,7 @@ class TestProtocolCompliance:
 class TestLifecycle:
     def test_start_stop(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         assert adapter._running is True
         adapter.stop()
@@ -171,13 +171,13 @@ class TestLifecycle:
 
     def test_start_without_roster_raises(self):
         cm = FakeCommitteeManager(roster=None)
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         with pytest.raises(RuntimeError, match="No roster"):
             adapter.start()
 
     def test_submit_transaction_returns_hash(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         tx = b"hello-transaction"
         tx_hash = adapter.submit_transaction(tx)
@@ -186,7 +186,7 @@ class TestLifecycle:
 
     def test_current_round_increments(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         assert adapter.current_round() == -1
         adapter.drive_rounds(1)
@@ -202,7 +202,7 @@ class TestLifecycle:
 class TestBatchProduction:
     def test_drive_rounds_yields_ordered_batches(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         adapter.submit_transaction(b"tx-for-batch")
         batches = adapter.drive_rounds(5)
@@ -213,7 +213,7 @@ class TestBatchProduction:
 
     def test_ordered_batch_has_correct_consensus_type(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         adapter.submit_transaction(b"tx1")
         batches = adapter.drive_rounds(5)
@@ -223,7 +223,7 @@ class TestBatchProduction:
 
     def test_four_validators_produce_commits(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         adapter.submit_transaction(b"tx4v")
         batches = adapter.drive_rounds(5)
@@ -232,7 +232,7 @@ class TestBatchProduction:
 
     def test_seven_validators_produce_commits(self):
         cm = FakeCommitteeManager(roster=_make_roster(7))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         adapter.submit_transaction(b"tx7v")
         batches = adapter.drive_rounds(5)
@@ -241,7 +241,7 @@ class TestBatchProduction:
 
     def test_transactions_appear_in_batches(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         adapter.submit_transaction(b"payload-A")
         adapter.submit_transaction(b"payload-B")
@@ -266,7 +266,7 @@ class TestBLSIntegration:
             roster=_make_roster(4),
             signing_keys={1: keys},
         )
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         adapter.submit_transaction(b"bls-tx")
         batches = adapter.drive_rounds(5)
@@ -279,7 +279,7 @@ class TestBLSIntegration:
 
     def test_adapter_works_without_dkg_keys(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         adapter.submit_transaction(b"no-bls-tx")
         batches = adapter.drive_rounds(5)
@@ -296,7 +296,7 @@ class TestEpochAndEviction:
     def test_tick_detects_epoch_advance(self):
         roster_e1 = _make_roster(4, epoch=1)
         cm = FakeCommitteeManager(roster=roster_e1, epoch=1)
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
 
         roster_e2 = _make_roster(4, epoch=2)
@@ -312,7 +312,7 @@ class TestEpochAndEviction:
     def test_tick_detects_eviction(self):
         roster = _make_roster(4, epoch=1)
         cm = FakeCommitteeManager(roster=roster, epoch=1)
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
 
         cm.evict_member(b"validator-1")
@@ -327,7 +327,7 @@ class TestEpochAndEviction:
     def test_events_recorded_in_history(self):
         roster = _make_roster(4, epoch=1)
         cm = FakeCommitteeManager(roster=roster, epoch=1)
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         assert len(adapter.events()) == 0
 

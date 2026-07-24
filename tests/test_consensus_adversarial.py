@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.ltp.consensus.adapter import MysticetiAdapter
+from src.ltp.consensus.adapter import DagBftAdapter
 from src.ltp.consensus.events import ConsensusEventType
 from src.ltp.execution.committee.dkg.session import DKGSession
 from src.ltp.execution.committee.dkg.threshold_signing import (
@@ -141,7 +141,7 @@ def dkg_4_epoch2():
 class TestEvictionScenarios:
     def test_evicted_validator_blocks_excluded(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         adapter.submit_transaction(b"pre-evict")
         adapter.drive_rounds(2)
@@ -156,7 +156,7 @@ class TestEvictionScenarios:
 
     def test_double_eviction_is_idempotent(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
 
         cm.evict_member(b"validator-1")
@@ -171,7 +171,7 @@ class TestEvictionScenarios:
 
     def test_eviction_of_leader_round(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         adapter.drive_rounds(1)
 
@@ -185,7 +185,7 @@ class TestEvictionScenarios:
 
     def test_submit_after_stop_raises(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         adapter.stop()
         with pytest.raises(RuntimeError):
@@ -193,7 +193,7 @@ class TestEvictionScenarios:
 
     def test_all_validators_evicted_halts_liveness(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
 
         for i in range(4):
@@ -213,7 +213,7 @@ class TestEvictionScenarios:
 class TestEpochTransitions:
     def test_validator_set_grow_4_to_7(self):
         cm = FakeCommitteeManager(roster=_make_roster(4, epoch=1), epoch=1)
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         adapter.submit_transaction(b"epoch1-tx")
         adapter.drive_rounds(3)
@@ -231,7 +231,7 @@ class TestEpochTransitions:
 
     def test_validator_set_shrink_7_to_4(self):
         cm = FakeCommitteeManager(roster=_make_roster(7, epoch=1), epoch=1)
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
 
         cm.advance_epoch(2, _make_roster(4, epoch=2))
@@ -244,7 +244,7 @@ class TestEpochTransitions:
 
     def test_epoch_advance_during_active_rounds(self):
         cm = FakeCommitteeManager(roster=_make_roster(4, epoch=1), epoch=1)
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         adapter.submit_transaction(b"inflight-tx")
         adapter.drive_rounds(3)
@@ -259,7 +259,7 @@ class TestEpochTransitions:
 
     def test_concurrent_epoch_and_eviction(self):
         cm = FakeCommitteeManager(roster=_make_roster(4, epoch=1), epoch=1)
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
 
         new_roster = _make_roster(4, epoch=2)
@@ -273,7 +273,7 @@ class TestEpochTransitions:
 
     def test_multiple_rapid_epoch_advances(self):
         cm = FakeCommitteeManager(roster=_make_roster(4, epoch=1), epoch=1)
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
 
         cm.advance_epoch(2, _make_roster(4, epoch=2))
@@ -307,7 +307,7 @@ class TestBLSEdgeCases:
 
     def test_epoch_without_dkg_keys_graceful_degradation(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         adapter.submit_transaction(b"no-dkg")
         batches = adapter.drive_rounds(5)
@@ -324,14 +324,14 @@ class TestBLSEdgeCases:
             roster=_make_roster(4),
             signing_keys={1: keys},
         )
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         batches = adapter.drive_rounds(3)
         adapter.stop()
 
     def test_engine_rebuilt_stream_continues(self):
         cm = FakeCommitteeManager(roster=_make_roster(4, epoch=1), epoch=1)
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         adapter.submit_transaction(b"pre-rebuild")
         adapter.drive_rounds(3)
@@ -346,7 +346,7 @@ class TestBLSEdgeCases:
 
     def test_eviction_at_commit_round_still_valid(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
         adapter.submit_transaction(b"evict-round-tx")
         batches = adapter.drive_rounds(3)
@@ -366,7 +366,7 @@ class TestBLSEdgeCases:
 
     def test_stale_validator_after_removal(self):
         cm = FakeCommitteeManager(roster=_make_roster(4))
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
 
         cm.evict_member(b"validator-3")
@@ -381,7 +381,7 @@ class TestBLSEdgeCases:
         """Roster has fewer members than validator set — evictions detected."""
         roster = _make_roster(4)
         cm = FakeCommitteeManager(roster=roster, epoch=1)
-        adapter = MysticetiAdapter(cm)
+        adapter = DagBftAdapter(cm)
         adapter.start()
 
         # Remove 2 members from roster (simulating external evictions)

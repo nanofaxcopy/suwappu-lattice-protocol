@@ -90,7 +90,7 @@ MultiSig (2-of-2) → TimelockController (60s) → LTPAnchorRegistry (Proxy)
 
 - Admin on all contracts is the **Timelock** — never the deployer or MultiSig directly
 - Signer registration requires the full governance path: MultiSig propose → confirm → execute schedule → wait 60s → execute register
-- Bridge contracts are wired together: `OptimisticBridgeChallenge.setZKVerifier(zkVerifier)` enables instant finality via ZK proof
+- Bridge contracts are wired together: `OptimisticBridgeChallenge.setZKVerifier(zkVerifier)` is meant to enable instant finality via ZK proof — **but the live `ZKBridgeVerifier` on both chains above is currently deployed in `MODE_SIMULATED`** (a keccak-based placeholder, not a real proof system; see `contracts/src/ZKBridgeVerifier.sol`). No production-deployed ZK verifier for ML-DSA/lattice-based signatures exists anywhere in the industry as of this writing — this is an honest R&D gap, not a swap-in-a-library task. Until `lockProduction()` is called after a real verifier backend lands, treat every anchor's finality as coming from the **optimistic path** (`openWindow` → `challengePeriod` → `finalizeWindow`), which is fully real. Don't rely on "instant finality" for anything moving value today.
 - Timelock delay is 60s (testnet); production target is 24-48 hours
 
 ## On-Chain Verification Commands

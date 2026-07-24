@@ -1,4 +1,4 @@
-"""MysticetiProtocol — pure protocol logic for a single validator (Spec D1a §2)."""
+"""DagBftProtocol — pure protocol logic for a single validator (Spec D1a §2)."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from .dag_store import DAGStore
 from .types import Block, Certificate, CommitDecision, EquivocationProof, RoundState
 
 
-class MysticetiProtocol:
-    """Mysticeti DAG-BFT protocol state for one validator.
+class DagBftProtocol:
+    """DAG-BFT protocol state for one validator (Mysticeti-inspired, arXiv:2310.14821).
 
     Pure logic — receives messages, produces messages. No I/O.
     """
