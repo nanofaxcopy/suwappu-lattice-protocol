@@ -5,7 +5,14 @@ edition = "2021"
 description = "SP1 zkVM circuit: proves ML-DSA-65 signature validity for ETP bridge"
 
 [dependencies]
-sp1-zkvm = "4.0"
+# Pinned to match the installed toolchain (`cargo prove` / sp1up installs
+# 6.3.1 as of this writing). The prior pin ("4.0") was mismatched against
+# any current toolchain and used sp1-zkvm's old memory layout: a ~2MB
+# STACK_TOP and a 1.875GB heap ceiling, both too small for ML-DSA-65's
+# NTT/matrix-expansion working set. sp1-zkvm 6.x redesigned this: STACK_TOP
+# is ~1.875GB and heap MAX_MEMORY defaults to 128GB (build-time
+# configurable via SP1_ZKVM_MAX_MEMORY) -- see sp1-zkvm's build.rs.
+sp1-zkvm = "6.3.1"
 sha3 = "0.10"
 # Pure-Rust ML-DSA-65 (FIPS 204) — compatible with SP1's RISC-V target
 ml-dsa = "0.1.0-rc.8"
