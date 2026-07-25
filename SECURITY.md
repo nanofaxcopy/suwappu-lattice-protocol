@@ -97,6 +97,7 @@ For detailed security analysis and design decisions:
 - [Standing Audit Findings (2026-05-15)](docs/security/audits/internal/SECURITY_AUDIT_2026-05-15.md) — 31 LTP-A-* findings + strengths register
 - [Internal Testing Charter](SECURITY_TESTING.md) — authorization and scope for red-team campaigns
 - [Threat Model](docs/THREAT_MODEL.md)
+- [Bridge Trust Model](docs/BRIDGE_TRUST_MODEL.md) — what secures the on-chain optimistic bridge today: honest disclosure that the live Base Sepolia `ZKBridgeVerifier` fast path (`MODE_SIMULATED`) provides no cryptographic guarantee (LTP-A-007), and that challenge-window operator/challenger bonds are currently 0
 - [Security Review (2026-02-24)](docs/security/audits/internal/SECURITY_REVIEW-2-24-2026.md)
 - [Lattice Key Shard Exposure Analysis](docs/security/audits/internal/001-lattice-key-shard-exposure.md)
 - [Architecture — Security Layers](docs/design-decisions/ARCHITECTURE.md#6-security-layers)

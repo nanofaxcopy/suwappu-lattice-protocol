@@ -135,6 +135,8 @@ To regenerate the ABI after a contract change, run `forge build` in
 
 The Solidity changes in PR #8 Commit 5 (`docs/security/audits/internal/SECURITY_AUDIT_2026-05-15.md` LTP-A-002, LTP-A-007, LTP-A-009, LTP-A-017) are source-only — they do **not** modify any deployed v5/v6 contract. They take effect when the next batch (v7) is deployed using the tightened `DeployMainnet.s.sol` script.
 
+See [Bridge Trust Model](BRIDGE_TRUST_MODEL.md) for what this means concretely for a user of the *live* Base Sepolia deployment today — most importantly, that `lockProduction()` (the ZK production-mode lock) does not exist on the currently-deployed contract, so the `MODE_SIMULATED` fast path (no real cryptographic verification, LTP-A-007) cannot be locked out until v7 actually deploys.
+
 | Change | File | What it enforces at the next deploy |
 |---|---|---|
 | MultiSig Byzantine threshold | `contracts/script/DeployMainnet.s.sol` | `threshold >= ceil(N/2) + 1` (no more 2-of-2) |
