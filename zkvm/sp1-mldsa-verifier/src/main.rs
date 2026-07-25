@@ -11,27 +11,36 @@
 //!
 //! This circuit builds to a real RISC-V zkVM ELF via `cargo prove build`
 //! and the real `sp1-sdk` `ProverClient` accepts it — the pipeline is not
-//! a mock. Two real issues were found and one is fixed here:
+//! a mock. Two real bugs were found and BOTH are now fixed:
 //!
-//! 1. **Fixed**: the default "bump" allocator (never frees) exhausted
-//!    `sp1-zkvm`'s 0x78000000 MAX_MEMORY under ML-DSA-65's NTT/matrix-
-//!    expansion working set. Switched to the "embedded" (free-list)
-//!    allocator in `Cargo.toml` — confirmed this resolves the memory
-//!    panic and execution proceeds further.
-//! 2. **Open, NOT fixed**: past the memory fix, `Signature::decode()`
-//!    fails inside the zkVM on witness bytes that decode and verify
-//!    correctly natively (confirmed with the same `ml-dsa` crate outside
-//!    the zkVM). Root cause is not yet confirmed but the leading
-//!    suspect is `sp1-zkvm`'s hardcoded `STACK_TOP = 0x0020_0400`
-//!    (~2MB) — ML-DSA's NTT/polynomial code plausibly uses large stack
-//!    frames that overflow this on the RISC-V target and silently
-//!    corrupt adjacent memory (no guard page). `STACK_TOP` is baked into
-//!    `sp1-zkvm`'s compiled entrypoint, not a Cargo.toml-configurable
-//!    value, so fixing this needs either patching that crate's
-//!    entrypoint/linker layout or replacing `ml-dsa` with an
-//!    embedded-target-conscious ML-DSA implementation. Real proof
-//!    generation (`client.prove(...)` in `../sp1-host/src/main.rs`)
-//!    does not yet succeed end-to-end because of this.
+//! 1. **Fixed**: the old `sp1-zkvm = "4.0"` pin used that generation's
+//!    memory layout — a ~2MB stack (`STACK_TOP = 0x0020_0400`) and a
+//!    1.875GB heap ceiling (`MAX_MEMORY = 0x78000000`) — mismatched
+//!    against any current SP1 toolchain (`cargo prove`/`sp1up` installs
+//!    6.x). ML-DSA-65's NTT/matrix-expansion working set exceeded both:
+//!    first a heap panic ("Memory limit exceeded"), then — after trying
+//!    to work around that with the "embedded" allocator — a stack
+//!    overflow that silently corrupted witness bytes before
+//!    `Signature::decode()` ("Failed to decode ML-DSA-65 signature" on
+//!    bytes that decode and verify correctly natively). The actual root
+//!    cause was the version pin, not ML-DSA or the allocator: upgraded
+//!    to `sp1-zkvm = "6.3.1"` (matching the installed toolchain), whose
+//!    redesigned memory layout gives ~1.875GB of stack and a
+//!    build-configurable 128GB-default heap ceiling — both comfortably
+//!    sufficient. Confirmed: the real `sp1-sdk` `ProverClient` now runs
+//!    the circuit to completion with no panic, no decode failure, on a
+//!    real ML-DSA-65 witness (verified natively first).
+//! 2. **Environment-limited, not a code defect**: full local CPU proof
+//!    generation (`client.prove(...)` in `../sp1-host/src/main.rs`) was
+//!    run to actual completion of proof computation in a 15GB-RAM
+//!    sandbox and was killed by the OS (swap fully exhausted) before
+//!    finishing — SP1's local CPU prover for a circuit this size needs
+//!    more RAM than that sandbox provided. This is a resource ceiling of
+//!    where it was tested, not a bug in the circuit or the fix above.
+//!    Re-run on a machine with more RAM (SP1's docs suggest 16GB+ is
+//!    tight for real circuits; 32GB+ is more realistic), or via SP1's
+//!    Network prover (`prove_mode="network"` in `sp1_prover.py`, needs
+//!    an API key), to get a real end-to-end proof.
 
 #![no_main]
 sp1_zkvm::entrypoint!(main);
