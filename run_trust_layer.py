@@ -1,5 +1,11 @@
 """SUWAPPU Pre-Blockchain Trust Packaging Layer — Full Demo"""
 
+import os
+
+# This demo reads plaintext kp.sk/kp.dk to show raw key material; opt out of
+# the implicit-HSM sentinel keys (LTP-A-032 Phase 4c) before the ltp import.
+os.environ.setdefault("LTP_KEYPAIR_IMPLICIT_HSM", "0")
+
 import time
 
 from src.ltp import *
@@ -16,7 +22,12 @@ from src.ltp.encoding import CanonicalEncoder
 from src.ltp.envelope import SignedEnvelope
 from src.ltp.evidence import EvidenceBundle
 from src.ltp.governance import ApprovalRule, SignerEntry, SignerPolicy
-from src.ltp.hybrid import AlgorithmId, AlgorithmRegistry, composite_signing_message
+from src.ltp.hybrid import (
+    AlgorithmId,
+    AlgorithmRegistry,
+    composite_signing_message,
+    generate_composite_keypair,
+)
 from src.ltp.merkle_log.portable_proof import TreeType
 from src.ltp.receipt import ApprovalReceipt, ReceiptType
 from src.ltp.sequencing import SequenceTracker
@@ -331,10 +342,12 @@ print(
     f"  Verify pure:         {registry.verify(AlgorithmId.MLDSA65, alice.vk, msg, DOMAIN_COMMIT_RECORD, sig_pure)}"
 )
 
-sig_comp = registry.sign(AlgorithmId.MLDSA65_ED25519_SHA512, alice.sk, msg, DOMAIN_COMMIT_RECORD)
+# Composite xDSA needs a dedicated keypair: 64B Ed25519 sk || 4032B ML-DSA sk
+comp_vk, comp_sk = generate_composite_keypair()
+sig_comp = registry.sign(AlgorithmId.MLDSA65_ED25519_SHA512, comp_sk, msg, DOMAIN_COMMIT_RECORD)
 print(f"  Composite xDSA sig:  {len(sig_comp)} bytes (3309 ML-DSA + 64 Ed25519)")
 print(
-    f"  Verify composite:    {registry.verify(AlgorithmId.MLDSA65_ED25519_SHA512, alice.vk, msg, DOMAIN_COMMIT_RECORD, sig_comp)}"
+    f"  Verify composite:    {registry.verify(AlgorithmId.MLDSA65_ED25519_SHA512, comp_vk, msg, DOMAIN_COMMIT_RECORD, sig_comp)}"
 )
 
 m_prime = composite_signing_message(msg)
@@ -370,7 +383,7 @@ print(f"  Anchor digest (32B):       {receipt.anchor_digest().hex()[:48]}...")
 print(f"  Merkle proof verified:     {proof.verify()}")
 print(f"  Policy signed & verified:  {policy.verify_policy(alice.vk)}")
 print(
-    f"  Hybrid crypto operational: {registry.verify(AlgorithmId.MLDSA65_ED25519_SHA512, alice.vk, msg, DOMAIN_COMMIT_RECORD, sig_comp)}"
+    f"  Hybrid crypto operational: {registry.verify(AlgorithmId.MLDSA65_ED25519_SHA512, comp_vk, msg, DOMAIN_COMMIT_RECORD, sig_comp)}"
 )
 print(f"  Evidence bundle size:      {len(bundle.canonical_bytes())} bytes")
 print(f"  ABI calldata size:         {len(calldata)} bytes")
