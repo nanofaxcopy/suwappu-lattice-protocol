@@ -35,17 +35,34 @@ from enum import Enum
 from .domain import DOMAIN_SIGNED_ENVELOPE, domain_sign, domain_verify
 from .primitives import MLDSA
 
+_pynacl_available = False
+try:
+    from nacl.bindings import crypto_sign, crypto_sign_open
+    from nacl.exceptions import CryptoError as _NaclCryptoError
+
+    _pynacl_available = True
+except ImportError:
+    pass
+
 __all__ = [
     "AlgorithmId",
     "CompositeSignature",
     "composite_signing_message",
     "split_signing_message",
+    "generate_composite_keypair",
     "AlgorithmRegistry",
 ]
 
 # IETF composite signature constants
 _COMPOSITE_PREFIX = b"composite-sig-v1"
 _COMPOSITE_LABEL = b"MLDSA65-Ed25519-SHA512"
+
+# Ed25519 key/signature sizes (libsodium convention: the 64B "secret key"
+# is seed(32) || pubkey(32) packed together, matching this module's
+# documented composite SK/PK/Sig sizes above).
+_ED25519_SK_SIZE = 64
+_ED25519_PK_SIZE = 32
+_ED25519_SIG_SIZE = 64
 
 
 class AlgorithmId(Enum):
@@ -138,6 +155,27 @@ def split_signing_message(message: bytes, context: bytes = b"") -> tuple[bytes, 
     return m_prime, m_prime
 
 
+def generate_composite_keypair() -> tuple[bytes, bytes]:
+    """Generate a real composite (Ed25519 + ML-DSA-65) keypair.
+
+    Returns:
+        (vk, sk) where vk = 32B Ed25519 pk || 1952B ML-DSA-65 pk (1984B),
+        sk = 64B Ed25519 sk || 4032B ML-DSA-65 sk (4096B) — the exact
+        layout `AlgorithmRegistry.sign`/`.verify` expect for
+        `AlgorithmId.MLDSA65_ED25519_SHA512`.
+    """
+    if not _pynacl_available:
+        raise RuntimeError(
+            "generate_composite_keypair requires pynacl "
+            "(pip install 'ltp[crypto]' or 'ltp[dev]')."
+        )
+    from nacl.bindings import crypto_sign_keypair
+
+    ed_pk, ed_sk = crypto_sign_keypair()
+    mldsa_vk, mldsa_sk = MLDSA.keygen()
+    return ed_pk + mldsa_vk, ed_sk + mldsa_sk
+
+
 class AlgorithmRegistry:
     """Version-aware algorithm selection for signature transitions.
 
@@ -162,12 +200,17 @@ class AlgorithmRegistry:
         """Sign a message using the specified algorithm.
 
         For MLDSA65: returns a 3309B ML-DSA-65 signature.
-        For MLDSA65_ED25519_SHA512: returns a 3373B composite signature.
-            (Ed25519 component is simulated — production requires real Ed25519 key)
+        For MLDSA65_ED25519_SHA512: returns a 3373B composite signature —
+            a REAL Ed25519 signature (via pynacl/libsodium) concatenated
+            with a real ML-DSA-65 signature, both over the same composite
+            message M'. Both components must independently verify.
 
         Args:
             algo_id: Algorithm to use
-            sk:      Signing key (ML-DSA-65 sk for both; composite also needs Ed25519 sk)
+            sk:      Signing key. For MLDSA65: the 4032B ML-DSA-65 sk.
+                     For MLDSA65_ED25519_SHA512: 4096B composite —
+                     64B Ed25519 sk || 4032B ML-DSA-65 sk (see module
+                     docstring "Key sizes (composite)").
             message: Message to sign
             domain:  Domain separation tag
         """
@@ -185,11 +228,26 @@ class AlgorithmRegistry:
                 "which is NOT post-quantum safe. Use AlgorithmId.MLDSA65 for PQ security.",
                 stacklevel=2,
             )
+            if not _pynacl_available:
+                raise RuntimeError(
+                    "MLDSA65_ED25519_SHA512 requires pynacl for real Ed25519 signing "
+                    "(pip install 'ltp[crypto]' or 'ltp[dev]')."
+                )
+            expected_sk_len = _ED25519_SK_SIZE + 4032
+            if len(sk) != expected_sk_len:
+                raise ValueError(
+                    f"composite sk must be {expected_sk_len}B "
+                    f"({_ED25519_SK_SIZE}B Ed25519 + 4032B ML-DSA-65), got {len(sk)}"
+                )
+            ed_sk, mldsa_sk = sk[:_ED25519_SK_SIZE], sk[_ED25519_SK_SIZE:]
+
             m_prime = composite_signing_message(message)
-            ml_sig = domain_sign(domain, sk, m_prime)
-            # Ed25519 component: simulated with hash for PoC
-            # Production: use actual Ed25519 signing with separate key
-            ed_sig = hashlib.sha512(b"ed25519-poc-sig" + sk[:32] + m_prime).digest()
+            ml_sig = domain_sign(domain, mldsa_sk, m_prime)
+            # crypto_sign() is libsodium's attached-mode signing: it
+            # returns sig(64B) || message. Detached signing isn't exposed
+            # at the nacl.bindings level, so we slice the signature off.
+            ed_signed = crypto_sign(m_prime, ed_sk)
+            ed_sig = ed_signed[:_ED25519_SIG_SIZE]
             composite = CompositeSignature(ml_sig=ml_sig, ed_sig=ed_sig)
             return composite.to_bytes()
 
@@ -206,11 +264,17 @@ class AlgorithmRegistry:
         """Verify a signature using the specified algorithm.
 
         For MLDSA65: verifies a standard ML-DSA-65 signature.
-        For MLDSA65_ED25519_SHA512: verifies both components of composite.
+        For MLDSA65_ED25519_SHA512: verifies BOTH components of the
+            composite — a real Ed25519 verify (via pynacl/libsodium) AND
+            a real ML-DSA-65 verify. Both must pass; this is the whole
+            point of a composite/hybrid signature (defense in depth if
+            either algorithm is later broken).
 
         Args:
             algo_id: Algorithm used for signing
-            vk:      Verification key
+            vk:      Verification key. For MLDSA65: the 1952B ML-DSA-65
+                     pk. For MLDSA65_ED25519_SHA512: 1984B composite —
+                     32B Ed25519 pk || 1952B ML-DSA-65 pk.
             message: Original message
             domain:  Domain separation tag
             sig:     Signature bytes
@@ -222,19 +286,30 @@ class AlgorithmRegistry:
             return domain_verify(domain, vk, message, sig)
 
         elif algo_id == AlgorithmId.MLDSA65_ED25519_SHA512:
+            if not _pynacl_available:
+                raise RuntimeError(
+                    "MLDSA65_ED25519_SHA512 requires pynacl for real Ed25519 verification "
+                    "(pip install 'ltp[crypto]' or 'ltp[dev]')."
+                )
+            expected_vk_len = _ED25519_PK_SIZE + 1952
+            if len(vk) != expected_vk_len:
+                return False
+            ed_pk, mldsa_pk = vk[:_ED25519_PK_SIZE], vk[_ED25519_PK_SIZE:]
+
             try:
                 composite = CompositeSignature.from_bytes(sig)
             except ValueError:
                 return False
             m_prime = composite_signing_message(message)
-            # Verify ML-DSA component
-            if not domain_verify(domain, vk, m_prime, composite.ml_sig):
+
+            # Both components must independently verify.
+            if not domain_verify(domain, mldsa_pk, m_prime, composite.ml_sig):
                 return False
-            # Ed25519 component: PoC verification via hash comparison
-            # Production: use actual Ed25519 verify with public key
-            # For PoC, we accept any 64B Ed25519 component (the ML-DSA
-            # component provides the actual security guarantee)
-            return len(composite.ed_sig) == 64
+            try:
+                opened = crypto_sign_open(composite.ed_sig + m_prime, ed_pk)
+            except _NaclCryptoError:
+                return False
+            return opened == m_prime
 
         return False
 
