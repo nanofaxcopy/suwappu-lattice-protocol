@@ -140,6 +140,7 @@ from .hybrid import (
     AlgorithmRegistry,
     CompositeSignature,
     composite_signing_message,
+    generate_composite_keypair,
     split_signing_message,
 )
 from .keypair import KeyPair, KeyRegistry, SealedBox
@@ -330,6 +331,7 @@ __all__ = [
     "AlgorithmRegistry",
     "composite_signing_message",
     "split_signing_message",
+    "generate_composite_keypair",
     # Production assertions
     "assert_real_crypto",
     # Utilities
