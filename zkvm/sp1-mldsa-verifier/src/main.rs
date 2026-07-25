@@ -6,6 +6,32 @@
 //!
 //! This is the core proof obligation for the ETP cross-chain bridge:
 //! "The operator's STH signature is valid" — proved in zero knowledge.
+//!
+//! ## Status (verified against the real SP1 toolchain, not simulated)
+//!
+//! This circuit builds to a real RISC-V zkVM ELF via `cargo prove build`
+//! and the real `sp1-sdk` `ProverClient` accepts it — the pipeline is not
+//! a mock. Two real issues were found and one is fixed here:
+//!
+//! 1. **Fixed**: the default "bump" allocator (never frees) exhausted
+//!    `sp1-zkvm`'s 0x78000000 MAX_MEMORY under ML-DSA-65's NTT/matrix-
+//!    expansion working set. Switched to the "embedded" (free-list)
+//!    allocator in `Cargo.toml` — confirmed this resolves the memory
+//!    panic and execution proceeds further.
+//! 2. **Open, NOT fixed**: past the memory fix, `Signature::decode()`
+//!    fails inside the zkVM on witness bytes that decode and verify
+//!    correctly natively (confirmed with the same `ml-dsa` crate outside
+//!    the zkVM). Root cause is not yet confirmed but the leading
+//!    suspect is `sp1-zkvm`'s hardcoded `STACK_TOP = 0x0020_0400`
+//!    (~2MB) — ML-DSA's NTT/polynomial code plausibly uses large stack
+//!    frames that overflow this on the RISC-V target and silently
+//!    corrupt adjacent memory (no guard page). `STACK_TOP` is baked into
+//!    `sp1-zkvm`'s compiled entrypoint, not a Cargo.toml-configurable
+//!    value, so fixing this needs either patching that crate's
+//!    entrypoint/linker layout or replacing `ml-dsa` with an
+//!    embedded-target-conscious ML-DSA implementation. Real proof
+//!    generation (`client.prove(...)` in `../sp1-host/src/main.rs`)
+//!    does not yet succeed end-to-end because of this.
 
 #![no_main]
 sp1_zkvm::entrypoint!(main);
