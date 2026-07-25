@@ -335,6 +335,7 @@ See [docs/README.md](docs/README.md) for the full documentation index.
 | [Production Roadmap](docs/plans/2026-05-11-production-roadmap.md) | Current milestones (2026-05-11) |
 | [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) | Docker, Kubernetes, CI/CD |
 | [Bridge MVP](docs/bridge-mvp-scope.md) | Cross-chain bridge scope |
+| [Bridge Trust Model](docs/BRIDGE_TRUST_MODEL.md) | What secures the on-chain bridge today, stated plainly — including the live fast-path ZK-verification stub and zero-bond challenge window |
 | [Security Review](docs/security/audits/internal/SECURITY_REVIEW-2-24-2026.md) | Formal security analysis |
 
 ## Test Coverage
