@@ -64,6 +64,10 @@ exclude = [
     # GitHub-runner egress (>20s for large PDFs). Cited in WHITEPAPER.md
     # as primary source for academic preprints; link is stable for humans.
     "^https?://(www\\.)?inria\\.hal\\.science/",
+    # fedramp.gov restructured its site around the Rev5->20x transition;
+    # this exact Rev5 SSP playbook path now 404s and no confidently-live
+    # equivalent could be found. See docs/compliance/fedramp-high/README.md.
+    "^https?://www\\.fedramp\\.gov/docs/rev5/playbook/csp/authorization/ssp/",
 ]
 
 # --- Internal-link strictness -------------------------------------------
