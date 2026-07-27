@@ -1,6 +1,6 @@
 """Byzantine fault injection tests (Spec D1a §3)."""
 
-from ltp.consensus.engine import LocalMysticetiEngine
+from ltp.consensus.engine import LocalDagBftEngine
 from ltp.consensus.faults import FaultConfig, FaultType, PartitionConfig
 
 
@@ -8,7 +8,7 @@ class TestEquivocation:
     """Equivocating validator detected and excluded."""
 
     def test_equivocator_detected(self):
-        engine = LocalMysticetiEngine(num_validators=4)
+        engine = LocalDagBftEngine(num_validators=4)
         engine.inject_fault(
             FaultConfig(
                 validator=1,
@@ -21,7 +21,7 @@ class TestEquivocation:
             assert engine.validators[v_idx].is_equivocator(1) is True
 
     def test_equivocator_blocks_excluded_from_commit(self):
-        engine = LocalMysticetiEngine(num_validators=4)
+        engine = LocalDagBftEngine(num_validators=4)
         engine.inject_fault(
             FaultConfig(
                 validator=1,
@@ -40,7 +40,7 @@ class TestCrashFaults:
 
     def test_f_crash_faults_protocol_continues(self):
         """n=4, f=1. One crash fault — protocol should still commit."""
-        engine = LocalMysticetiEngine(num_validators=4)
+        engine = LocalDagBftEngine(num_validators=4)
         engine.inject_fault(
             FaultConfig(
                 validator=3,
@@ -53,7 +53,7 @@ class TestCrashFaults:
 
     def test_f_plus_1_crash_faults_halts(self):
         """n=4, f=1. Two crash faults — liveness lost."""
-        engine = LocalMysticetiEngine(num_validators=4)
+        engine = LocalDagBftEngine(num_validators=4)
         engine.inject_fault(
             FaultConfig(
                 validator=2,
@@ -73,7 +73,7 @@ class TestCrashFaults:
 
     def test_crash_after_round_3(self):
         """Validator crashes after round 3 — commits before crash are fine."""
-        engine = LocalMysticetiEngine(num_validators=4)
+        engine = LocalDagBftEngine(num_validators=4)
         engine.inject_fault(
             FaultConfig(
                 validator=1,
@@ -91,7 +91,7 @@ class TestWithhold:
     def test_withhold_still_forms_certs(self):
         """Validator 1 withholds from validator 3. With n=4, quorum=3,
         the other 3 honest validators can still form certificates."""
-        engine = LocalMysticetiEngine(num_validators=4)
+        engine = LocalDagBftEngine(num_validators=4)
         engine.inject_fault(
             FaultConfig(
                 validator=1,
@@ -110,7 +110,7 @@ class TestDelay:
     def test_delayed_acks_still_commits(self):
         """Delayed acks slow things down but don't prevent eventual commits
         (other validators compensate)."""
-        engine = LocalMysticetiEngine(num_validators=7)  # n=7, f=2
+        engine = LocalDagBftEngine(num_validators=7)  # n=7, f=2
         engine.inject_fault(
             FaultConfig(
                 validator=1,
@@ -127,7 +127,7 @@ class TestCensor:
 
     def test_censored_txs_included_by_others(self):
         """Validator 0 censors, but other validators include txs."""
-        engine = LocalMysticetiEngine(num_validators=4)
+        engine = LocalDagBftEngine(num_validators=4)
         engine.inject_fault(
             FaultConfig(
                 validator=0,
@@ -149,7 +149,7 @@ class TestNetworkPartition:
 
     def test_partition_halts_commits(self):
         """n=4 partitioned into {0,1} and {2,3}. Neither group has quorum (3)."""
-        engine = LocalMysticetiEngine(num_validators=4)
+        engine = LocalDagBftEngine(num_validators=4)
         engine._bus.set_partition(
             PartitionConfig(
                 group_a=frozenset({0, 1}),
@@ -162,7 +162,7 @@ class TestNetworkPartition:
 
     def test_partition_heal_resumes_commits(self):
         """Partition heals after round 3, commits resume."""
-        engine = LocalMysticetiEngine(num_validators=4)
+        engine = LocalDagBftEngine(num_validators=4)
         engine._bus.set_partition(
             PartitionConfig(
                 group_a=frozenset({0, 1}),
@@ -185,7 +185,7 @@ class TestMixedFaults:
     def test_equivocate_plus_crash_within_f(self):
         """n=7, f=2. One equivocator + one crash = 2 Byzantine, exactly f.
         Protocol should survive."""
-        engine = LocalMysticetiEngine(num_validators=7)
+        engine = LocalDagBftEngine(num_validators=7)
         engine.inject_fault(
             FaultConfig(
                 validator=1,

@@ -1,4 +1,5 @@
-"""DAG data structures for Mysticeti consensus (Spec D1a §1)."""
+"""DAG data structures for our DAG-BFT consensus (Spec D1a §1), inspired by
+Mysten Labs' Mysticeti (arXiv:2310.14821)."""
 
 from __future__ import annotations
 

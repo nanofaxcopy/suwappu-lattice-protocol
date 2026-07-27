@@ -1,5 +1,5 @@
 // ETP Multi-VM Execution Layer — gRPC Service Definitions
-// Used by: MysticetiAdapter (Python client) ↔ etp-mysticeti-sidecar (Rust server)
+// Used by: DagBftAdapter (Python client) ↔ etp-mysticeti-sidecar (Rust server)
 
 syntax = "proto3";
 package etp.execution.v1;

@@ -4,7 +4,7 @@ Single integration test that ties together:
 
 - Gate 5 — `CommitteeManager.sign_as_committee` produces a valid threshold BLS
   signature against the committee group public key.
-- Gate 6 — `MysticetiAdapter` drives a 4-validator Mysticeti consensus pipeline
+- Gate 6 — `DagBftAdapter` drives a 4-validator DAG-BFT consensus pipeline
   to produce ordered batches.
 
 The two land together: after running the adapter, we take the committed
@@ -14,7 +14,7 @@ round-trip through the JSON wire format, and assert verification is still
 green on the deserialized side.
 
 What this proves at the integration surface:
-1. Mysticeti consensus produces deterministic, signable digests over committed
+1. DAG-BFT consensus produces deterministic, signable digests over committed
    batches.
 2. The committee threshold-sign path round-trips through DKG.
 3. The corridor wire format preserves every byte that matters for
@@ -23,7 +23,7 @@ What this proves at the integration surface:
 What this intentionally does NOT prove (deferred to follow-up tracks per
 `docs/plans/2026-05-15-gate-5-6-closure.md`):
 - Real libp2p P2P transport between validators (FakeDKGTransport /
-  in-process Mysticeti backend is used).
+  in-process DAG-BFT backend is used).
 - Live multi-machine deploy (single-process simulation).
 - Submission of the aggregate signature to a live on-chain registry.
 """
@@ -34,7 +34,7 @@ import hashlib
 
 import pytest
 
-from src.ltp.consensus.adapter import MysticetiAdapter
+from src.ltp.consensus.adapter import DagBftAdapter
 from src.ltp.corridor.attestation import (
     AttestationPayload,
     CorridorAttestation,
@@ -175,7 +175,7 @@ class _ManualCommitteeManager:
 
 @pytest.mark.skipif(not bls12_381_available(), reason="py_ecc / blst not installed")
 def test_gate_5_6_closure_dkg_consensus_threshold_sign_wire_roundtrip():
-    """End-to-end: DKG → Mysticeti consensus → threshold sign → wire roundtrip → verify."""
+    """End-to-end: DKG → DAG-BFT consensus → threshold sign → wire roundtrip → verify."""
 
     # ---- Stage 1: Roster + DKG (Gate 5 surface) -----------------------------
     n, threshold = 4, 3
@@ -186,8 +186,8 @@ def test_gate_5_6_closure_dkg_consensus_threshold_sign_wire_roundtrip():
 
     cm = _ManualCommitteeManager(roster, signing_keys, threshold)
 
-    # ---- Stage 2: MysticetiAdapter drives consensus (Gate 6 surface) --------
-    adapter = MysticetiAdapter(cm, round_timeout_ms=50)
+    # ---- Stage 2: DagBftAdapter drives consensus (Gate 6 surface) --------
+    adapter = DagBftAdapter(cm, round_timeout_ms=50)
     adapter.start()
     try:
         adapter.submit_transaction(b"closure-tx-1")
@@ -196,14 +196,14 @@ def test_gate_5_6_closure_dkg_consensus_threshold_sign_wire_roundtrip():
     finally:
         adapter.stop()
 
-    assert batches, "expected at least one ordered batch from MysticetiAdapter"
+    assert batches, "expected at least one ordered batch from DagBftAdapter"
 
     # Pick the first non-empty batch to attest over.
     target_batch = next((b for b in batches if b.transactions), batches[0])
     assert target_batch.consensus_type == "dag"
 
     # ---- Stage 3: Committee threshold-signs the batch digest (Gate 5) -------
-    # Mirror the canonical batch serialization in MysticetiAdapter._serialize_batch
+    # Mirror the canonical batch serialization in DagBftAdapter._serialize_batch
     h = hashlib.sha3_256()
     h.update(target_batch.round.to_bytes(8, "big"))
     h.update(target_batch.epoch.to_bytes(8, "big"))
@@ -253,7 +253,7 @@ def test_gate_5_6_closure_rejects_tampered_signature_after_wire_roundtrip():
     signing_keys, group_pk = _run_dkg(n, threshold)
     cm = _ManualCommitteeManager(roster, signing_keys, threshold)
 
-    adapter = MysticetiAdapter(cm, round_timeout_ms=50)
+    adapter = DagBftAdapter(cm, round_timeout_ms=50)
     adapter.start()
     try:
         adapter.submit_transaction(b"tamper-tx")

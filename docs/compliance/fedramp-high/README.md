@@ -63,8 +63,8 @@ cd ../suwappu-db && PROPTEST_CASES=10000 cargo test --workspace --release
 
 ## References
 
-- FedRAMP Rev. 5 SSP guidance: https://www.fedramp.gov/docs/rev5/playbook/csp/authorization/ssp/
-- FedRAMP control baseline guidance: https://www.fedramp.gov/preview/2026/providers/rev5/controls/
+- FedRAMP Rev. 5 SSP guidance: https://www.fedramp.gov/docs/rev5/playbook/csp/authorization/ssp/ (link retired by fedramp.gov's rev5→20x site restructure; excluded from link checking, see `lychee.toml`)
+- FedRAMP control baseline guidance: https://www.fedramp.gov/2026/reference/controls/
 - NIST SP 800-53 Rev. 5: https://csrc.nist.gov/Pubs/sp/800/53/r5/upd1/Final
 - FIPS 202 SHA-3: https://csrc.nist.gov/publications/detail/fips/202/final
 - FIPS 203 ML-KEM: https://csrc.nist.gov/pubs/fips/203/final

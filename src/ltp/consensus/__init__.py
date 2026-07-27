@@ -1,6 +1,12 @@
-"""Mysticeti DAG-BFT consensus engine (Specs D1a, D1b)."""
+"""DAG-BFT consensus engine (Specs D1a, D1b).
 
-from .adapter import MysticetiAdapter
+Design inspired by Mysten Labs' Mysticeti (arXiv:2310.14821, Babel et al.) —
+an uncertified-DAG BFT protocol. This is our own implementation, not a port
+of Mysten's code; class names avoid reusing their protocol's exact naming
+(e.g. "Mysticeti-C") to prevent implying shared lineage or endorsement.
+"""
+
+from .adapter import DagBftAdapter
 from .backend import ConsensusBackend, LocalConsensusBackend
 from .bls_certificates import (
     DOMAIN_CONSENSUS_ACK,
@@ -14,11 +20,11 @@ from .commit_rule import (
 )
 from .committee_sync import CommitteeSync
 from .dag_store import DAGStore
-from .engine import LocalMysticetiEngine, to_ordered_batch
+from .engine import LocalDagBftEngine, to_ordered_batch
 from .events import ConsensusEvent, ConsensusEventType
 from .faults import FaultConfig, FaultType, PartitionConfig
 from .message_bus import MessageBus
-from .protocol import MysticetiProtocol
+from .protocol import DagBftProtocol
 from .types import (
     Block,
     Certificate,
@@ -38,13 +44,13 @@ __all__ = [
     # D1a: Storage
     "DAGStore",
     # D1a: Protocol
-    "MysticetiProtocol",
+    "DagBftProtocol",
     # D1a: Commit rule
     "evaluate_direct_commit",
     "evaluate_indirect_commit",
     "collect_causal_history",
     # D1a: Engine
-    "LocalMysticetiEngine",
+    "LocalDagBftEngine",
     "to_ordered_batch",
     # D1a: Fault injection
     "FaultType",
@@ -68,5 +74,5 @@ __all__ = [
     # D1b: Committee Sync
     "CommitteeSync",
     # D1b: Adapter
-    "MysticetiAdapter",
+    "DagBftAdapter",
 ]

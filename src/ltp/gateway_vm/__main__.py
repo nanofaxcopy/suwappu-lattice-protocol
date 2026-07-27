@@ -172,6 +172,28 @@ def main() -> None:
         config, operator_key, signer_vk_hash=vk_hash
     )
 
+    # --- Signer authorization check (validator checklist item 8) ---
+    # Queries LTPAnchorRegistry.authorizedSigners(vkHash) on the destination
+    # chain so the gateway rejects unregistered operators before signing and
+    # broadcasting an anchor tx, instead of relying solely on the on-chain
+    # revert in `anchor()`/`anchorWithBinding()`.
+    _AUTHORIZED_SIGNERS_ABI = [
+        {
+            "type": "function",
+            "name": "authorizedSigners",
+            "inputs": [{"name": "", "type": "bytes32"}],
+            "outputs": [{"name": "", "type": "bool"}],
+            "stateMutability": "view",
+        }
+    ]
+    _dest_registry = w3_dest.eth.contract(
+        address=Web3.to_checksum_address(config.dest_registry_address),
+        abi=_AUTHORIZED_SIGNERS_ABI,
+    )
+
+    def is_signer_authorized() -> bool:
+        return _dest_registry.functions.authorizedSigners(vk_hash).call()
+
     # --- Seed listener near chain tip (avoid scanning entire chain history) ---
     # Cursor must start behind safe_block (current - finality_depth) so the
     # listener has a scannable range on its first tick.
@@ -187,7 +209,7 @@ def main() -> None:
         get_source_block_number=get_source_block_number,
         get_dest_block_number=get_dest_block_number,
         anchor_fn=anchor_client.as_anchor_fn(),
-        is_signer_authorized=lambda: True,
+        is_signer_authorized=is_signer_authorized,
         start_block=start_block,
     )
 

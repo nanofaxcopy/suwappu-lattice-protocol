@@ -81,7 +81,7 @@ class NodeExecutor:
         monitor_events = self._monitor.record(batch_result, catastrophic)
         execution_events.extend(monitor_events)
 
-        # 4. Tick consensus adapter (if it has tick method — MysticetiAdapter does)
+        # 4. Tick consensus adapter (if it has tick method — DagBftAdapter does)
         if hasattr(self._consensus, "tick"):
             adapter_events = self._consensus.tick(batch.round, batch.timestamp_ms)
             consensus_events.extend(adapter_events)

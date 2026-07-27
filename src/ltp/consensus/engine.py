@@ -1,4 +1,4 @@
-"""LocalMysticetiEngine — in-process multi-validator simulation (Spec D1a §3)."""
+"""LocalDagBftEngine — in-process multi-validator simulation (Spec D1a §3)."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from typing import Iterator
 from ..execution.types import OrderedBatch
 from .faults import FaultConfig, FaultType, PartitionConfig
 from .message_bus import MessageBus
-from .protocol import MysticetiProtocol
+from .protocol import DagBftProtocol
 from .types import Block, Certificate, CommitDecision
 
 
@@ -29,8 +29,8 @@ def to_ordered_batch(decision: CommitDecision, epoch: int) -> OrderedBatch:
     )
 
 
-class LocalMysticetiEngine:
-    """In-process Mysticeti simulation with n validators.
+class LocalDagBftEngine:
+    """In-process DAG-BFT simulation with n validators (Mysticeti-inspired).
 
     Supports synchronous mode (advance_round/run_rounds) for deterministic
     testing, and async mode (start/stop/stream_commits) for production-like
@@ -50,7 +50,7 @@ class LocalMysticetiEngine:
         self._current_round = -1  # next advance_round will go to 0
 
         self._validators = [
-            MysticetiProtocol(i, num_validators, self._f) for i in range(num_validators)
+            DagBftProtocol(i, num_validators, self._f) for i in range(num_validators)
         ]
         self._bus = MessageBus(num_validators)
         self._mempool: deque[bytes] = deque()
@@ -62,7 +62,7 @@ class LocalMysticetiEngine:
         self._thread: threading.Thread | None = None
 
     @property
-    def validators(self) -> list[MysticetiProtocol]:
+    def validators(self) -> list[DagBftProtocol]:
         return self._validators
 
     def get_dag_store(self, validator: int):
