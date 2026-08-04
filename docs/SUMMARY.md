@@ -30,6 +30,8 @@
 * [Enforcement Mechanisms](design-decisions/ENFORCEMENT_MECHANISMS.md)
 * [Cross-Deployment Federation](design-decisions/CROSS_DEPLOYMENT_FEDERATION.md)
 * [Commitment Network Options](design-decisions/COMMITMENT_NETWORK_OPTIONS.md)
+* [On-Chain PQ Verification (EIP/ERC Strategy)](design-decisions/PQ_ONCHAIN_VERIFICATION.md)
+* [Standards Work](eips/README.md)
 
 ## Reference
 
