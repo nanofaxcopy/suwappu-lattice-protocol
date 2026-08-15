@@ -1,6 +1,6 @@
-# Contributing to the Entanglement Transfer Protocol
+# Contributing to the Lattice Transfer Protocol
 
-Thank you for your interest in contributing to ETP. This document provides guidelines
+Thank you for your interest in contributing to LTP. This document provides guidelines
 for contributing to the project.
 
 ## Prerequisites
@@ -16,8 +16,8 @@ for contributing to the project.
 
 ```bash
 # Clone the repository
-git clone https://github.com/Suwappu-Labs/Entanglement-Transfer-Protocol.git
-cd Entanglement-Transfer-Protocol
+git clone https://github.com/Suwappu-Labs/suwappu-lattice-protocol.git
+cd suwappu-lattice-protocol
 
 # Install in development mode (includes test deps + real PQ crypto)
 pip install -e ".[dev]"
@@ -42,7 +42,7 @@ forge test -vvv
 
 ## Running Tests
 
-### Python Tests (1,167 tests)
+### Python Tests (~3,900 tests)
 
 ```bash
 # Run all tests
@@ -58,7 +58,7 @@ pytest tests/test_protocol.py::TestCommitMaterialize::test_basic_transfer -v
 pytest tests/ --cov=src/ltp --cov-report=term-missing
 ```
 
-### Solidity Tests (84 tests)
+### Solidity Tests (~340 test + invariant functions)
 
 ```bash
 cd contracts

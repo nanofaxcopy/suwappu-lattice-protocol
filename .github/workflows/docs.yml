@@ -12,7 +12,7 @@ on:
       - "SECURITY.md"
       - "src/ltp/**"
       - "lychee.toml"
-      - ".markdownlint.json"
+      - ".markdownlint-cli2.jsonc"
       - ".github/workflows/docs.yml"
   pull_request:
     branches: [main, master]
@@ -25,7 +25,7 @@ on:
       - "SECURITY.md"
       - "src/ltp/**"
       - "lychee.toml"
-      - ".markdownlint.json"
+      - ".markdownlint-cli2.jsonc"
       - ".github/workflows/docs.yml"
 
 permissions:

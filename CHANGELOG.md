@@ -12,6 +12,17 @@ public-surface promise and the cross-version compatibility matrix.
 ## [Unreleased]
 
 ### Added
+- Quality-parity pass (cross-repo bar set by suwappubot):
+  `scripts/verify.sh` single verification entrypoint with lanes
+  (lint / semgrep / python / fast / contracts / secaudit / docs / all);
+  CodeQL analysis workflow (python + actions, SHA-pinned); the
+  `.semgrep/` crypto/key-handling rules now run in CI (advisory,
+  documented finding baseline); Python test matrix widened to
+  3.10/3.11/3.12; coverage measurement with an enforced floor
+  (`pytest-cov`, `[tool.coverage.report] fail_under`); DST regression
+  gate resurrected from the orphaned `deploy/ci/test.yml` into live CI
+  (advisory — the harness currently reports real violations on seeds
+  123/777); root `AGENTS.md` and `SUPPORT.md`
 - Repository governance baseline: `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1),
   `.github/CODEOWNERS` (per-area required reviewers), `.github/FUNDING.yml`
 - `pyproject.toml` metadata: PEP 621 keywords, classifiers, and `[project.urls]`

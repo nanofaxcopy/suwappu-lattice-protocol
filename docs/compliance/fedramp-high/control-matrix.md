@@ -25,7 +25,7 @@ cloud service offering.
 | IA-5 Authenticator Management | Partial | Platform security | `src/ltp/hsm.py` | `python3 -m pytest tests/test_key_lifecycle.py -q` | Add PKI/KMS rotation evidence |
 | IR-4 Incident Handling | Planned | SecOps | `docs/compliance/fedramp-high/ssp-narratives.md` | `python3 -m pytest tests/test_alerts.py -q` | Add incident runbooks |
 | IR-5 Incident Monitoring | Partial | SecOps | `src/ltp/observability/alerts.py` | `python3 -m pytest tests/test_alerts.py -q` | Wire alerts to SIEM |
-| RA-5 Vulnerability Monitoring and Scanning | Planned | Security | `docs/compliance/fedramp-high/release-evidence.md` | `semgrep --config auto .` | Add scan artifacts |
+| RA-5 Vulnerability Monitoring and Scanning | Partially implemented | Security | `.github/workflows/lint.yml` (semgrep job), `.github/workflows/codeql.yml`, `.github/workflows/contracts.yml` (pip-audit) | `semgrep scan --config .semgrep/ --metrics=off --error src/ scripts/` | Drive the semgrep finding baseline to zero and make the job blocking; add scan artifacts to release evidence |
 | SA-10 Developer Configuration Management | Partial | Engineering | `docs/compliance/fedramp-high/release-evidence.md` | `git status --short` | Add protected branch evidence |
 | SA-11 Developer Testing and Evaluation | Implemented | Engineering | `tests/` | `python3 -m pytest tests/ -q` | None |
 | SA-15 Development Process, Standards, Tools | Partial | Engineering | `pyproject.toml` | `python3 -m pytest tests/ -q` | Add SDLC policy reference |
