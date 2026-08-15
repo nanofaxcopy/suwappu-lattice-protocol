@@ -7,8 +7,29 @@ Any drift here will break wire compatibility with the DAG L1 corridor surface.
 from __future__ import annotations
 
 # Paper §10.2 — constant on-chain commitment size.
-# ML-KEM-768 ciphertext (~1,568 B) + BLS12-381 aggregate signature (~96 B) +
-# SHA3-256 payload root (32 B) ≈ 1,600 B.
+#
+# CAUTION: this figure is a paper-level approximation and matches NO actual
+# field layout. The real envelope totals are:
+#     ML-KEM-768:   1088 + 96 + 32 = 1216 B
+#     ML-KEM-1024:  1568 + 96 + 32 = 1696 B
+# Neither is 1,600. The 1,600 figure is the ML-KEM-**1024** ciphertext
+# (1,568 B) plus the SHA3-256 root (32 B), i.e. it drops the 96-byte
+# aggregate signature — and an earlier version of this comment additionally
+# mislabeled that 1,568 B as the "ML-KEM-768 ciphertext". ML-KEM-768's
+# ciphertext is 1,088 B (see `src/ltp/primitives.py::_REAL_KEM_CT`);
+# 1,568 B is ML-KEM-1024 (Level 5).
+#
+# Consequences, both already documented in `envelope.py`:
+#   - `OnChainCommitment.assert_strict_total()` is unsatisfiable for every
+#     well-formed envelope; it is a forward-compat stub, not a live check.
+#   - The invariant that actually holds is payload INDEPENDENCE, not this
+#     specific number. That is machine-checked in `formal/lean/` (see
+#     `Ltp/Commitment.lean`: `commitment_size_payload_independent` and
+#     `strict_total_unsatisfiable`).
+#
+# Do not "fix" a field width to make this arithmetic work — the Lean proofs
+# pin the widths and will fail. Changing the constant is a cross-repo wire
+# decision shared with suwappu-dag/crates/suwappu-ltp.
 ON_CHAIN_COMMITMENT_BYTES = 1_600
 
 # Paper §10 — 7-of-9 corridor super-node attestation quorum.

@@ -1,0 +1,52 @@
+name: formal
+
+# Machine-checks the Lean proofs in `formal/lean/`.
+#
+# Runs on changes to the proofs themselves AND to the Python sources the
+# proofs pin constants from. That second trigger is the point: the proofs
+# hard-code the corridor quorum (7-of-9) and the commitment field widths,
+# so if someone edits `constants.py` or `primitives.py` and the proofs
+# stop matching, this job fails and forces the question.
+#
+# No Mathlib — `formal/lean` depends on Lean 4 core only, so this job is
+# an elan install plus a few seconds of `lake build`.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'formal/**'
+      - '.github/workflows/formal.yml'
+      - 'src/ltp/corridor/constants.py'
+      - 'src/ltp/corridor/envelope.py'
+      - 'src/ltp/primitives.py'
+  pull_request:
+    paths:
+      - 'formal/**'
+      - '.github/workflows/formal.yml'
+      - 'src/ltp/corridor/constants.py'
+      - 'src/ltp/corridor/envelope.py'
+      - 'src/ltp/primitives.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lean:
+    name: lean proofs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      # Installed by script rather than a third-party action: LTP-A-025
+      # requires SHA-pinning every Action, and the toolchain version is
+      # already pinned by `formal/lean/lean-toolchain`.
+      - name: Install Lean (elan)
+        run: |
+          curl -sSfL https://elan.lean-lang.org/elan-init.sh -o elan-init.sh
+          sh elan-init.sh -y --default-toolchain none
+          echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Verify proofs
+        run: formal/lean/verify.sh

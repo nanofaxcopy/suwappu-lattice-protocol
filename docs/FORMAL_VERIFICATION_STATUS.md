@@ -7,7 +7,36 @@ What's verified, by what tool, and what's not — for outside cryptographic revi
 | Artifact | Tool | Status |
 |---|---|---|
 | [`ANALYSIS.md`](formal/ANALYSIS.md) | (overview doc) | Methodology, attacker model, cryptographic abstractions, query list |
-| [`etp-protocol.vp`](formal/etp-protocol.vp) | Verifpal v0.27+ | Symbolic model of the 3-phase COMMIT / LATTICE / MATERIALIZE protocol |
+| [`etp-protocol.vp`](formal/etp-protocol.vp) | Verifpal v0.27+ | Symbolic model of the 3-phase COMMIT / LATTICE / MATERIALIZE protocol. **Written but never run** — see below. |
+| [`../formal/lean/`](../formal/lean/) | Lean 4 (core, no Mathlib) | **Machine-checked.** Corridor 7-of-9 quorum safety + liveness, and the constant-size commitment invariant. Gated in CI by `.github/workflows/formal.yml`. |
+
+## Machine-checked (Lean 4)
+
+Added 2026-08-15 to cover the threshold-quorum gap this document itself
+identified as out of reach for Verifpal. Run `formal/lean/verify.sh`.
+
+| Theorem | Claim |
+|---|---|
+| `corridor_intersection` | Any two 7-of-9 attestations share ≥ 5 signers (`7 + 7 - 9`) |
+| `corridor_safety` | With ≤ 4 Byzantine super-nodes, any two attestations share an **honest** signer — two conflicting attestations cannot both be valid |
+| `corridor_liveness` | With ≤ 2 unavailable super-nodes a quorum is still formable; note the asymmetry (safety tolerates 4, liveness only 2) |
+| `commitment_size_payload_independent` | On-chain commitment size is independent of payload — the operative content of Paper §10.2 |
+| `strict_total_unsatisfiable` | No valid envelope totals the pinned `ON_CHAIN_COMMITMENT_BYTES = 1_600`; ML-KEM-768 gives 1,216 and ML-KEM-1024 gives 1,696 |
+
+The proofs use no `sorry` (CI enforces this via an axiom audit, and the
+gate is negative-tested). **They are proofs about a model, not about
+`src/ltp/`** — cryptographic soundness is assumed, and nothing is
+extracted to the running code. Read
+[`formal/lean/README.md`](../formal/lean/README.md#what-is-not-proved--read-this-before-citing-these-results)
+before citing them.
+
+## ⚠️ The Verifpal model has never actually been run
+
+The line below has said "pending the next release-engineering pass" since
+this document was written. Treat every Verifpal row in this file as
+**claimed, not established**, until someone runs it and records the
+output. This is tracked as a gap rather than quietly presented as
+verification.
 
 ## What is verified symbolically
 
@@ -63,7 +92,8 @@ The expected output is one line per query with a `verified` or `attack` verdict.
 
 Items the maintainers know are missing and welcome contributions on:
 
-- A **Tamarin** or **ProVerif** model of the corridor 7-of-9 BLS attestation flow (Verifpal doesn't natively model threshold signatures)
+- Running the Verifpal model and recording the output (see the warning above — this is the cheapest outstanding item)
+- ~~A **Tamarin** or **ProVerif** model of the corridor 7-of-9 BLS attestation flow~~ — the *quorum* half of this is now covered by the Lean proofs above. A symbolic model is still wanted for the parts Lean does not touch: aggregate-signature unforgeability under a Dolev-Yao attacker, and the PoP exchange (LTP-A-015)
 - A **Certora** prover spec for `LTPAnchorRegistry.sol` covering sequence monotonicity, entity-signer binding, and the UUPS upgrade-admin gate
 - A **`hypothesis`**-based fuzz harness for `src/ltp/corridor/wire.py` deserialization (one shipped in PR #8 as `tests/test_corridor_wire_validation.py` but it's table-driven; property-based would catch more edge cases)
 - A side-channel evaluation of the `py_ecc` keygen path, or a contributed Rust binding for an audited constant-time KEM library
