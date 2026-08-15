@@ -58,6 +58,15 @@ lane_semgrep() {
     semgrep scan --config .semgrep/ --metrics=off --error src/ scripts/
 }
 
+lane_formal() {
+    if ! command -v lake >/dev/null 2>&1 && [ ! -x "$HOME/.elan/bin/lake" ]; then
+        echo "lean/lake not installed; skipping formal lane" >&2
+        echo "  install: curl -sSfL https://elan.lean-lang.org/elan-init.sh | sh -s -- -y" >&2
+        return 1
+    fi
+    formal/lean/verify.sh
+}
+
 lane_contracts() {
     if ! command -v forge >/dev/null 2>&1; then
         echo "foundry not installed (https://getfoundry.sh); skipping contracts lane" >&2
@@ -71,6 +80,7 @@ case "$LANE" in
     semgrep)   run "semgrep" lane_semgrep ;;
     python)    run "python tests" make test-python ;;
     fast)      run "python tests (fast)" make test-python-fast ;;
+    formal)    run "lean proofs" lane_formal ;;
     contracts) run "solidity tests" lane_contracts ;;
     secaudit)  run "contract security suite" make contracts-secaudit ;;
     docs)      run "docs-api" make docs-api ;;
@@ -79,6 +89,12 @@ case "$LANE" in
         run "semgrep" lane_semgrep
         run "python tests" make test-python
         run "docs-api" make docs-api
+        if command -v lake >/dev/null 2>&1 || [ -x "$HOME/.elan/bin/lake" ]; then
+            run "lean proofs" lane_formal
+        else
+            echo ""
+            echo "── lean proofs: SKIPPED (lean not installed)"
+        fi
         if command -v forge >/dev/null 2>&1; then
             run "solidity tests" make test-contracts
         else
@@ -88,7 +104,7 @@ case "$LANE" in
         ;;
     *)
         echo "Unknown lane: ${LANE}" >&2
-        echo "Lanes: lint semgrep python fast contracts secaudit docs all" >&2
+        echo "Lanes: lint semgrep python fast formal contracts secaudit docs all" >&2
         exit 2
         ;;
 esac
