@@ -31,13 +31,20 @@ jobs:
   python-test:
     name: Python Tests (with real PQ crypto)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      # Full declared support range (requires-python = ">=3.10").
+      # Previously only 3.12 ran in CI; the 3-version matrix lived in an
+      # orphaned workflow file that never executed.
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install Python dependencies
         run: pip install -e ".[dev,chain]"
@@ -52,8 +59,41 @@ jobs:
           print('All real crypto backends active: ML-KEM-768, ML-DSA-65, XChaCha20-Poly1305')
           "
 
-      - name: Run Python tests
-        run: pytest tests/ -v --ignore=tests/test_contract_integration.py
+      - name: Run Python tests (with coverage floor)
+        # The floor lives in pyproject.toml [tool.coverage.report]
+        # fail_under so local `pytest --cov` and CI enforce the same
+        # number. Ratchet it upward as coverage grows; never lower it
+        # to make a PR pass.
+        run: pytest tests/ --ignore=tests/test_contract_integration.py --cov=src/ltp --cov-report=term
+
+  dst-gate:
+    name: DST Regression Gate (deterministic simulation)
+    runs-on: ubuntu-latest
+    needs: [python-test]
+    # Non-blocking: the harness currently reports a real violation
+    # baseline on this tree (2026-08-15: seeds 123 and 777 produce 76
+    # violations at --steps 500; seed 42 is clean). Surfacing it as a
+    # yellow check makes the regression visible on every PR. To make
+    # blocking, drop `continue-on-error` once the violation baseline
+    # is driven to zero — do not raise --max-violations to pass.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install -e ".[dev,chain]"
+
+      - name: Run DST harness
+        # Deterministic Simulation Testing over fixed seeds. This gate
+        # previously lived only in an orphaned workflow file
+        # (deploy/ci/test.yml) and never ran; src/simulator/ci_harness.py
+        # is the harness, tests/test_ci_harness.py covers it.
+        run: python -m src.simulator.ci_harness --seeds 42,123,777 --steps 500 --fault-rate 0.1
 
   dep-audit:
     name: Dependency vulnerability audit (pip-audit)

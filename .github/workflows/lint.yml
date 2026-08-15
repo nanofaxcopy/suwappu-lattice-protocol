@@ -37,3 +37,28 @@ jobs:
 
       - name: Run pre-commit
         run: pre-commit run --all-files --show-diff-on-failure --color=always
+
+  semgrep:
+    name: semgrep (.semgrep/ crypto + key-handling rules)
+    runs-on: ubuntu-latest
+    # Non-blocking while the existing-findings backlog is triaged: the
+    # rules in .semgrep/ predate their CI wiring and the tree carries a
+    # known baseline (2026-08-15: 38 ERROR / 34 WARNING findings — see
+    # FedRAMP control RA-5 in docs/compliance/fedramp-high/). Surfacing
+    # them as a yellow check makes the backlog visible on every PR
+    # without gating merge on pre-existing findings. To make blocking,
+    # drop `continue-on-error` once the ERROR count reaches zero.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install semgrep
+        run: pip install "semgrep>=1.90,<2"
+
+      - name: Run project semgrep rules
+        run: semgrep scan --config .semgrep/ --metrics=off --error src/ scripts/
