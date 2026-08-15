@@ -3,8 +3,9 @@ Mysten Labs' Mysticeti (arXiv:2310.14821)."""
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass, field
+
+from ..dual_lane.hashing import spec_hasher
 
 
 def _compute_block_digest(
@@ -14,7 +15,7 @@ def _compute_block_digest(
     parents: frozenset[bytes],
 ) -> bytes:
     """SHA3-256(author || round || len(payload) || sorted(payload) || sorted(parents))."""
-    h = hashlib.sha3_256()
+    h = spec_hasher()
     h.update(author.to_bytes(4, "big"))
     h.update(round.to_bytes(8, "big"))
     h.update(len(payload).to_bytes(4, "big"))

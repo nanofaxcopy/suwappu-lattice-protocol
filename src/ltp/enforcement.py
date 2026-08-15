@@ -17,8 +17,6 @@ Whitepaper reference: §5.2, §5.3, §5.4, §5.5, Open Questions 6 & 8
 
 from __future__ import annotations
 
-import hashlib
-import os
 import struct
 import time
 from abc import ABC, abstractmethod
@@ -26,6 +24,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from .dual_lane.hashing import spec_hash_bytes
+from .entropy import secure_random_bytes
 from .primitives import canonical_hash, canonical_hash_bytes, internal_hash_bytes
 
 __all__ = [
@@ -782,8 +782,8 @@ class VDFVerifier:
         This is a nothing-up-my-sleeve construction — N is publicly derivable.
         """
         # Generate deterministic primes from seed
-        h1 = hashlib.sha3_256(seed + b"vdf-prime-p").digest()
-        h2 = hashlib.sha3_256(seed + b"vdf-prime-q").digest()
+        h1 = spec_hash_bytes(seed + b"vdf-prime-p")
+        h2 = spec_hash_bytes(seed + b"vdf-prime-q")
 
         # Expand to target bit size
         half_bits = bits // 2
@@ -803,11 +803,11 @@ class VDFVerifier:
     @staticmethod
     def _fiat_shamir_prime(x: int, y: int, N: int) -> int:
         """Derive a Fiat-Shamir challenge prime l from (x, y, N)."""
-        h = hashlib.sha3_256(
+        h = spec_hash_bytes(
             x.to_bytes(256, "big", signed=False)
             + y.to_bytes(256, "big", signed=False)
             + N.to_bytes(256, "big", signed=False)
-        ).digest()
+        )
         candidate = int.from_bytes(h[:16], "big") | 1
         return _next_probable_prime(candidate)
 
@@ -818,7 +818,7 @@ class VDFVerifier:
         epoch: int,
     ) -> VDFChallenge:
         """Generate a VDF-enhanced audit challenge."""
-        nonce = os.urandom(16)
+        nonce = secure_random_bytes(16)
         input_seed = internal_hash_bytes(f"{entity_id}:{shard_index}:{epoch}:vdf".encode() + nonce)
         challenge_id = canonical_hash(input_seed + struct.pack(">I", self.config.difficulty))
 
@@ -850,7 +850,7 @@ class VDFVerifier:
         current = challenge.input_seed
         checkpoints = [current]  # Store intermediate values for Merkle proof
         for i in range(T):
-            current = hashlib.sha3_256(current).digest()
+            current = spec_hash_bytes(current)
             # Store checkpoints at power-of-2 intervals for O(log T) proof
             if (i + 1) & i == 0:  # i+1 is a power of 2
                 checkpoints.append(current)
@@ -860,7 +860,7 @@ class VDFVerifier:
 
         # Proof: hash of all checkpoints (enables O(log T) verification)
         proof_data = b"".join(checkpoints)
-        vdf_proof = hashlib.sha3_256(b"vdf-hash-chain-proof" + proof_data).digest()
+        vdf_proof = spec_hash_bytes(b"vdf-hash-chain-proof" + proof_data)
 
         elapsed_ms = (time.monotonic() - t0) * 1000
 
@@ -916,7 +916,7 @@ class VDFVerifier:
         T = challenge.difficulty
         current = challenge.input_seed
         for _ in range(T):
-            current = hashlib.sha3_256(current).digest()
+            current = spec_hash_bytes(current)
         return result.vdf_output == current
 
     def _verify_wesolowski(self, challenge: VDFChallenge, result: VDFResult) -> bool:
@@ -1064,7 +1064,7 @@ class CommitRevealEnforcement:
 
         Returns commitment hash for later revelation.
         """
-        salt = os.urandom(32)
+        salt = secure_random_bytes(32)
         commitment_hash = canonical_hash(evidence + salt)
 
         entry = CommitRevealEntry(

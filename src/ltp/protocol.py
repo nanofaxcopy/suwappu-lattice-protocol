@@ -21,6 +21,7 @@ from enum import Enum
 from typing import Optional
 
 from .commitment import CommitmentNetwork, CommitmentRecord
+from .dual_lane.hashing import spec_hash_hex
 from .entity import Entity
 from .erasure import ErasureCoder
 from .keypair import KeyPair, KeyRegistry
@@ -177,7 +178,10 @@ class LTPProtocol:
 
         # SECURITY: Each entity MUST have a unique CEK (see whitepaper §2.1.1).
         cek = ShardEncryptor.generate_cek()
-        logger.info("[COMMIT] CEK generated: %s... (256-bit CSPRNG)", cek.hex()[:16])
+        # Log a hash fingerprint, never raw key bytes — the previous
+        # cek.hex()[:16] leaked 64 bits of the CEK into logs.
+        key_fp = spec_hash_hex(cek)[:16]
+        logger.info("[COMMIT] CEK generated: fp=%s (256-bit CSPRNG)", key_fp)
 
         encrypted_shards = [
             ShardEncryptor.encrypt_shard(cek, entity_id, shard, i)
@@ -319,7 +323,9 @@ class LTPProtocol:
 
         logger.info("[MATERIALIZE] Key unsealed with private key")
         logger.info("[MATERIALIZE]   Entity ID: %s...", key.entity_id[:16])
-        logger.info("[MATERIALIZE]   CEK recovered: %s...", key.cek.hex()[:16])
+        # Hash fingerprint only — raw CEK bytes never reach logs.
+        key_fp = spec_hash_hex(key.cek)[:16]
+        logger.info("[MATERIALIZE]   CEK recovered: fp=%s", key_fp)
 
         # Step 2: Fetch commitment record (or use externally-supplied record)
         if record is None:

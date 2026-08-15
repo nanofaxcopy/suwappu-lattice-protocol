@@ -13,12 +13,12 @@ when RPC is available.
 
 from __future__ import annotations
 
-import hashlib
 import threading
 import time
 from typing import Callable, Optional
 
 from ..anchor.submission import AnchorSubmission
+from ..dual_lane.hashing import spec_hash_bytes
 from .config import GatewayVMConfig
 from .writer import GatewayAttestation
 
@@ -219,13 +219,13 @@ def _attestation_to_submission(attestation: GatewayAttestation, sequence: int) -
     anchor_digest = digest[:32] if len(digest) >= 32 else digest.ljust(32, b"\x00")
 
     # Use event_id hash as entity_id_hash (deterministic 32B identifier)
-    entity_id_hash = hashlib.sha3_256(attestation.event_id.encode()).digest()
+    entity_id_hash = spec_hash_bytes(attestation.event_id.encode())
 
     # Merkle root: hash of the signed event bytes (single-leaf "tree")
-    merkle_root = hashlib.sha3_256(attestation.event_bytes).digest()
+    merkle_root = spec_hash_bytes(attestation.event_bytes)
 
     # Policy hash: hash of the receipt type (gateway attestation policy)
-    policy_hash = hashlib.sha3_256(_RECEIPT_TYPE.encode()).digest()
+    policy_hash = spec_hash_bytes(_RECEIPT_TYPE.encode())
 
     return AnchorSubmission(
         anchor_digest=anchor_digest,

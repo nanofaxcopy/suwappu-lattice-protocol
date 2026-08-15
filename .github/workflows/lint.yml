@@ -37,3 +37,28 @@ jobs:
 
       - name: Run pre-commit
         run: pre-commit run --all-files --show-diff-on-failure --color=always
+
+  semgrep:
+    name: semgrep (.semgrep/ crypto + key-handling rules)
+    runs-on: ubuntu-latest
+    # BLOCKING. The finding baseline was driven to zero on 2026-08-15:
+    # raw sha3 call sites now route through the spec_hash_* helpers in
+    # ltp.dual_lane.hashing, raw os.urandom through ltp.entropy, CEK log
+    # lines log hash fingerprints, and the rules were fixed (the
+    # public-API assert rule had invalid syntax and never ran; the
+    # key-material log rule matched string literals and lengths).
+    # Any finding fails the job — fix the code or, for a deliberate
+    # documented exception, extend the rule with a cited comment.
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install semgrep
+        run: pip install "semgrep>=1.90,<2"
+
+      - name: Run project semgrep rules
+        run: semgrep scan --config .semgrep/ --metrics=off --error src/ scripts/

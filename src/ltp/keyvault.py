@@ -36,6 +36,7 @@ import logging
 import os
 from typing import TYPE_CHECKING, Optional
 
+from .entropy import secure_random_bytes
 from .primitives import AEAD
 
 if TYPE_CHECKING:
@@ -152,7 +153,7 @@ class KeyVault:
             "Set %s for stable wrapping.",
             _ENV_VAR,
         )
-        return cls(os.urandom(cls.KEK_SIZE))
+        return cls(secure_random_bytes(cls.KEK_SIZE))
 
     def wrap(self, plaintext: bytes, aad: bytes = b"") -> bytes:
         """Wrap plaintext → nonce(24) || ciphertext || tag(16).
@@ -163,7 +164,7 @@ class KeyVault:
         """
         if not isinstance(plaintext, (bytes, bytearray)):
             raise TypeError("plaintext must be bytes")
-        nonce = os.urandom(self.NONCE_SIZE)
+        nonce = secure_random_bytes(self.NONCE_SIZE)
         ciphertext = AEAD.encrypt(self._kek, bytes(plaintext), nonce, aad)
         return nonce + ciphertext
 

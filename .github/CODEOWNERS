@@ -27,4 +27,4 @@
 # Security policy and threat model
 /SECURITY.md                        @tomasuwappu
 /docs/THREAT_MODEL.md               @tomasuwappu
-/docs/SECURITY_AUDIT_*.md           @tomasuwappu
+/docs/security/audits/           @tomasuwappu

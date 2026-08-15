@@ -27,10 +27,8 @@ Reference: docs/design-decisions/INSTITUTIONAL_COMPLIANCE.md
 
 from __future__ import annotations
 
-import hashlib
 import hmac as hmac_mod
 import json
-import os
 import struct
 import time
 from abc import ABC, abstractmethod
@@ -38,6 +36,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Optional
 
+from .dual_lane.hashing import spec_hash_bytes, spec_hash_hex
+from .entropy import secure_random_bytes
 from .primitives import canonical_hash, canonical_hash_bytes
 
 __all__ = [
@@ -142,14 +142,14 @@ class FIPSCryptoProvider:
     def hash(self, data: bytes) -> str:
         """Content-addressing hash (FIPS/HYBRID: SHA3-256, DEFAULT: profile canonical)."""
         if self.mode in (CryptoProviderMode.FIPS, CryptoProviderMode.HYBRID):
-            digest = hashlib.sha3_256(data).hexdigest()
+            digest = spec_hash_hex(data)
             return f"sha3-256:{digest}"
         return canonical_hash(data)
 
     def hash_bytes(self, data: bytes) -> bytes:
         """Raw hash output (FIPS/HYBRID: SHA3-256, DEFAULT: profile canonical)."""
         if self.mode in (CryptoProviderMode.FIPS, CryptoProviderMode.HYBRID):
-            return hashlib.sha3_256(data).digest()
+            return spec_hash_bytes(data)
         return canonical_hash_bytes(data)
 
     def encrypt(self, key: bytes, plaintext: bytes, nonce: bytes) -> bytes:
@@ -723,7 +723,7 @@ class ComplianceAuditLogger:
     ) -> None:
         self.operator_id = operator_id
         self.retention_epochs = retention_epochs
-        self._signing_key = signing_key or os.urandom(32)
+        self._signing_key = signing_key or secure_random_bytes(32)
         self._events: list[AuditEvent] = []
         self._chain_hashes: list[str] = []
         self._head_hash: str = canonical_hash(b"audit-log-genesis")

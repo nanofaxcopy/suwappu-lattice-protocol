@@ -27,8 +27,9 @@ across deploys — see [`docs/STABILITY_PROMISES.md`](docs/STABILITY_PROMISES.md
 ## How to verify a change
 
 ```bash
-make test-python           # ~1,200 Python tests
-make test-contracts        # 84 Solidity tests via forge
+scripts/verify.sh          # all lanes: lint + semgrep + python + docs (+contracts)
+make test-python           # ~3,900 Python tests
+make test-contracts        # ~340 Solidity test/invariant functions via forge
 make contracts-secaudit    # Slither + Echidna + invariants (slow)
 make docs-api              # regenerate Python API reference (3.10–3.13)
 ```

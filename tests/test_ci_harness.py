@@ -96,24 +96,29 @@ class TestCIResult:
 
 
 class TestCIConfigValidation:
+    # The DST gate lives in the live workflow (.github/workflows/contracts.yml)
+    # since the orphaned deploy/ci/test.yml — which these tests previously
+    # validated — was removed. These assertions keep the gate wired: if the
+    # dst-gate job is renamed or detached from the test suite, this fails.
+    WORKFLOW = os.path.join(
+        os.path.dirname(__file__), "..", ".github", "workflows", "contracts.yml"
+    )
+
     def test_ci_yaml_parseable(self):
-        path = os.path.join(DEPLOY_DIR, "ci", "test.yml")
-        with open(path) as f:
+        with open(self.WORKFLOW) as f:
             config = yaml.safe_load(f)
         assert isinstance(config, dict)
 
     def test_ci_has_required_jobs(self):
-        path = os.path.join(DEPLOY_DIR, "ci", "test.yml")
-        with open(path) as f:
+        with open(self.WORKFLOW) as f:
             config = yaml.safe_load(f)
         jobs = config.get("jobs", {})
-        assert "python-tests" in jobs
-        assert "solidity-tests" in jobs
+        assert "python-test" in jobs
+        assert "forge-test" in jobs
         assert "dst-gate" in jobs
 
     def test_dst_gate_depends_on_python_tests(self):
-        path = os.path.join(DEPLOY_DIR, "ci", "test.yml")
-        with open(path) as f:
+        with open(self.WORKFLOW) as f:
             config = yaml.safe_load(f)
         dst_gate = config["jobs"]["dst-gate"]
-        assert "python-tests" in dst_gate.get("needs", [])
+        assert "python-test" in dst_gate.get("needs", [])

@@ -21,11 +21,11 @@ Parameters for 128-bit security: blowup=4, queries=32.
 
 from __future__ import annotations
 
-import hashlib
 import struct
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 
+from ..dual_lane.hashing import spec_hash_bytes
 from . import field as F
 from .merkle import MerkleProof, StarkMerkleTree
 
@@ -76,7 +76,7 @@ def _fiat_shamir_alpha(roots_so_far: list[bytes], round_idx: int) -> int:
     for r in roots_so_far:
         transcript += struct.pack(">I", len(r)) + r
     transcript += struct.pack(">I", round_idx)
-    digest = hashlib.sha3_256(transcript).digest()
+    digest = spec_hash_bytes(transcript)
     return int.from_bytes(digest, "big") % F.P
 
 
@@ -88,7 +88,7 @@ def _fiat_shamir_queries(all_roots: list[bytes], domain_size: int, num_queries: 
         transcript += struct.pack(">I", len(r)) + r
     indices = []
     for i in range(num_queries):
-        h = hashlib.sha3_256(transcript + struct.pack(">I", i)).digest()
+        h = spec_hash_bytes(transcript + struct.pack(">I", i))
         idx = int.from_bytes(h[:4], "big") % (domain_size // 2)
         indices.append(idx)
     return indices

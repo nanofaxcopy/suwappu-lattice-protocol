@@ -336,7 +336,12 @@ class DSTRunner:
         offline = self.offline_nodes
 
         faults = []
-        if online:
+        # Never offer a crash of the last online node: the injector must
+        # respect the environment assumption it registers as an invariant
+        # (at_least_one_node_online). Allowing it produced cascades of
+        # spurious violations — dozens of steps all-offline until a
+        # recovery happened to be drawn — that drowned real findings.
+        if len(online) > 1:
             faults.append(FaultType.NODE_CRASH)
         if offline:
             faults.append(FaultType.NODE_RECOVERY)
@@ -358,7 +363,10 @@ class DSTRunner:
 
         if fault_type == FaultType.NODE_CRASH:
             online = self.online_nodes
-            if online:
+            # Same guard as _buggify: the environment never takes down the
+            # last online node (at_least_one_node_online is an assumption,
+            # not a property under test).
+            if len(online) > 1:
                 node = self.rng.choice(online)
                 node.set_online(False)
                 self._log_fault(step, "node_crash", node.node_id)

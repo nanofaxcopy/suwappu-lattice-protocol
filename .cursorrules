@@ -47,4 +47,4 @@ registry (contracts/), and the LTP-corridor-v1 wire format.
 - Agent guide: docs/AI_AGENTS.md
 - Stability promises + version matrix: docs/STABILITY_PROMISES.md
 - Operator runbook: docs/OPERATOR_RUNBOOK.md
-- Latest security audit: docs/SECURITY_AUDIT_2026-05-15.md
+- Latest security audit: docs/security/audits/internal/SECURITY_AUDIT_2026-05-15.md

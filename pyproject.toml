@@ -102,6 +102,7 @@ production = [
 ]
 dev = [
     "pytest>=9.0.3,<10.0",
+    "pytest-cov>=6.0,<8.0",
     "hypothesis>=6.0,<7.0",
     "blake3>=0.3.0,<2.0",
     "pqcrypto>=0.4.0,<0.5",  # LTP-A-014: post-KyberSlash baseline; PQClean _CLEAN_ variant
@@ -139,6 +140,27 @@ testpaths = ["tests"]
 pythonpath = [".", "src"]
 markers = [
     "smoke: post-deploy smoke tests that require a live gateway (skip if not reachable)",
+]
+
+# ---------------------------------------------------------------------------
+# Coverage — enforced floor, single-sourced here so local `pytest --cov`
+# and CI (contracts.yml python-test) apply the same number.
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["src/ltp"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+# Measured 84% on the full suite (Python 3.11, 2026-08-15). Floor set
+# below the measurement to absorb per-version variation across the
+# 3.10/3.11/3.12 CI matrix. Ratchet upward as coverage grows; never
+# lower it to make a PR pass.
+fail_under = 75
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
 ]
 
 # ---------------------------------------------------------------------------

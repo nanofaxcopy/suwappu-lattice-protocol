@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import struct
 import sys
 from itertools import combinations
@@ -38,6 +37,7 @@ from . import (
     ShardEncryptor,
     canonical_hash,
 )
+from .entropy import secure_random_bytes
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -91,7 +91,7 @@ def demo_transfers(
             ).encode(),
             "application/json",
         ),
-        ("Large payload", os.urandom(100_000), "application/octet-stream"),
+        ("Large payload", secure_random_bytes(100_000), "application/octet-stream"),
     ]
 
     for name, content, shape in test_cases:
@@ -611,7 +611,7 @@ def demo_entity_immutability(
     collision_found = False
     collision_tester_vk = imm_sender.vk
     for i in range(n_entities):
-        random_content = os.urandom(64) + struct.pack(">I", i)
+        random_content = secure_random_bytes(64) + struct.pack(">I", i)
         random_entity = Entity(content=random_content, shape="x-ltp/collision-test")
         eid = random_entity.compute_id(collision_tester_vk, float(i))
         if eid in collision_set:
@@ -1161,8 +1161,8 @@ def compliance_demo() -> None:
     # Test AEAD round-trip
     from .primitives import AEAD
 
-    key = os.urandom(32)
-    nonce = os.urandom(AEAD.NONCE_SIZE)
+    key = secure_random_bytes(32)
+    nonce = secure_random_bytes(AEAD.NONCE_SIZE)
     ct = provider.encrypt(key, test_data, nonce)
     pt = provider.decrypt(key, ct, nonce)
     assert pt == test_data, "AEAD round-trip failed"
@@ -1217,7 +1217,7 @@ def compliance_demo() -> None:
     us_node2 = network.add_node("us-node-2", "us-west-2")
     eu_node = network.add_node("eu-node-1", "eu-west-1")
     # Distribute shards — should only go to US nodes
-    test_shards = [os.urandom(64) for _ in range(4)]
+    test_shards = [secure_random_bytes(64) for _ in range(4)]
     merkle_root = network.distribute_encrypted_shards("test-entity", test_shards)
     us_shards = us_node.shard_count + us_node2.shard_count
     eu_shards = eu_node.shard_count
@@ -1305,7 +1305,7 @@ def compliance_demo() -> None:
     test_network = CommitmentNetwork()
     n1 = test_network.add_node("node-a", "eu-west-1")
     n2 = test_network.add_node("node-b", "eu-central-1")
-    test_shards = [os.urandom(128) for _ in range(4)]
+    test_shards = [secure_random_bytes(128) for _ in range(4)]
     test_network.distribute_encrypted_shards("entity-to-delete", test_shards)
     shards_before = n1.shard_count + n2.shard_count
     print(f"  Shards before deletion: {shards_before}")

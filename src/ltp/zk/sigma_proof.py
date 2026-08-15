@@ -32,10 +32,10 @@ Proof size: 96 (T) + 32 (s_m) + 32 (s_r) = 160 bytes.
 
 from __future__ import annotations
 
-import hashlib
 import struct
 from dataclasses import dataclass
 
+from ..dual_lane.hashing import spec_hash_bytes
 from .ec_backend import (
     curve_order,
     g1_add,
@@ -83,7 +83,7 @@ def _fiat_shamir_challenge(
         + struct.pack(">I", len(t_bytes))
         + t_bytes
     )
-    digest = hashlib.sha3_256(transcript).digest()
+    digest = spec_hash_bytes(transcript)
     return int.from_bytes(digest, "big") % curve_order()
 
 
