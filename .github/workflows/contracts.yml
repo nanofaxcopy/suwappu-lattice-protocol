@@ -70,13 +70,11 @@ jobs:
     name: DST Regression Gate (deterministic simulation)
     runs-on: ubuntu-latest
     needs: [python-test]
-    # Non-blocking: the harness currently reports a real violation
-    # baseline on this tree (2026-08-15: seeds 123 and 777 produce 76
-    # violations at --steps 500; seed 42 is clean). Surfacing it as a
-    # yellow check makes the regression visible on every PR. To make
-    # blocking, drop `continue-on-error` once the violation baseline
-    # is driven to zero — do not raise --max-violations to pass.
-    continue-on-error: true
+    # BLOCKING. The violation baseline was driven to zero on 2026-08-15:
+    # the fault injector could crash the last online node, violating its
+    # own environment assumption (at_least_one_node_online) and cascading
+    # spurious violations on seeds 123/777. Fixed in src/simulator/dst.py.
+    # Do not raise --max-violations to make a red run pass.
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
 

@@ -41,14 +41,14 @@ jobs:
   semgrep:
     name: semgrep (.semgrep/ crypto + key-handling rules)
     runs-on: ubuntu-latest
-    # Non-blocking while the existing-findings backlog is triaged: the
-    # rules in .semgrep/ predate their CI wiring and the tree carries a
-    # known baseline (2026-08-15: 38 ERROR / 34 WARNING findings — see
-    # FedRAMP control RA-5 in docs/compliance/fedramp-high/). Surfacing
-    # them as a yellow check makes the backlog visible on every PR
-    # without gating merge on pre-existing findings. To make blocking,
-    # drop `continue-on-error` once the ERROR count reaches zero.
-    continue-on-error: true
+    # BLOCKING. The finding baseline was driven to zero on 2026-08-15:
+    # raw sha3 call sites now route through the spec_hash_* helpers in
+    # ltp.dual_lane.hashing, raw os.urandom through ltp.entropy, CEK log
+    # lines log hash fingerprints, and the rules were fixed (the
+    # public-API assert rule had invalid syntax and never ran; the
+    # key-material log rule matched string literals and lengths).
+    # Any finding fails the job — fix the code or, for a deliberate
+    # documented exception, extend the rule with a cited comment.
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
 

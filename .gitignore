@@ -32,6 +32,9 @@ htmlcov/
 secrets/
 .env
 .env.*
+# ...but committed example templates are allowed (values are placeholders only)
+!.env.*.example
+!.env.example
 
 # OS
 .DS_Store
