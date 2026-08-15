@@ -12,7 +12,7 @@ wire so it must use the exact byte layout the DAG L1 publishes.
 
 from __future__ import annotations
 
-import hashlib
+from ..dual_lane.hashing import spec_hasher
 
 
 def sha3_256_domain(tag: bytes, data: bytes) -> bytes:
@@ -22,7 +22,7 @@ def sha3_256_domain(tag: bytes, data: bytes) -> bytes:
     """
     if len(tag) > 0xFFFFFFFF:
         raise ValueError("tag length exceeds u32::MAX")
-    h = hashlib.sha3_256()
+    h = spec_hasher()
     h.update(len(tag).to_bytes(4, "big"))
     h.update(tag)
     h.update(data)

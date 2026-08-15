@@ -167,6 +167,39 @@ def canonical_hash_bytes(data: bytes) -> bytes:
     return _hash_digest(data, algo, raw=True)
 
 
+def spec_hash_bytes(data: bytes) -> bytes:
+    """Protocol-frozen SHA3-256. Returns the raw 32-byte digest.
+
+    For surfaces whose hash algorithm is pinned by specification and must
+    NEVER follow the active SecurityProfile: corridor wire digests
+    (LTP-corridor-v1), on-chain anchor parity (the Solidity registry
+    replicates these bytes), consensus digests, ZK proof transcripts and
+    Merkle domains, VDF hash chains, and derivation/rejection-sampling
+    loops. Changing the algorithm here is a hard wire/consensus break.
+
+    Use canonical_hash()/canonical_hash_bytes() instead when the artifact
+    should follow the profile's canonical-lane algorithm. This trio
+    (spec_*/canonical_*/internal_*) is the complete sanctioned hashing
+    surface — direct hashlib calls outside this module are rejected by
+    the .semgrep/ lane-separation rules.
+    """
+    return hashlib.sha3_256(data).digest()
+
+
+def spec_hash_hex(data: bytes) -> str:
+    """Protocol-frozen SHA3-256, hex-encoded. See spec_hash_bytes()."""
+    return hashlib.sha3_256(data).hexdigest()
+
+
+def spec_hasher():
+    """Incremental protocol-frozen SHA3-256 hasher. See spec_hash_bytes().
+
+    For streaming call sites that feed data via .update(); the digest is
+    byte-identical to spec_hash_bytes() over the concatenated input.
+    """
+    return hashlib.sha3_256()
+
+
 def internal_hash(data: bytes) -> str:
     """Internal lane hash. Returns '<algo>:<hex>' string.
 

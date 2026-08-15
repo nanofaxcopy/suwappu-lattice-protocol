@@ -25,11 +25,11 @@ Proof size: ~4-10 KB depending on polynomial degree.
 
 from __future__ import annotations
 
-import hashlib
-import os
 import struct
 from dataclasses import dataclass
 
+from ..dual_lane.hashing import spec_hash_bytes
+from ..entropy import secure_random_bytes
 from . import field as F
 from .fri import FRIParams, FRIProof, fri_commit_and_prove, fri_verify
 
@@ -108,7 +108,7 @@ class StarkProof:
 
 def _compute_witness_hash(entity_id: str, blinding_factor: bytes) -> bytes:
     """Compute the binding hash H(DOMAIN || entity_id || blinding_factor)."""
-    return hashlib.sha3_256(_STARK_DOMAIN + entity_id.encode() + blinding_factor).digest()
+    return spec_hash_bytes(_STARK_DOMAIN + entity_id.encode() + blinding_factor)
 
 
 def stark_prove(
@@ -142,7 +142,7 @@ def stark_prove(
     # Blinding adds zero-knowledge: blinded = witness + Z_H * rand
     # For simplicity, we add a random polynomial of the same degree
     blinding_coeffs = [
-        int.from_bytes(os.urandom(7), "big") % F.P for _ in range(len(witness_elems))
+        int.from_bytes(secure_random_bytes(7), "big") % F.P for _ in range(len(witness_elems))
     ]
 
     # Combine: interleave witness and blinding for larger degree
@@ -158,9 +158,9 @@ def stark_prove(
     fri_proof = fri_commit_and_prove(combined, params)
 
     # Step 5: Compute binding commitments
-    blinding_commitment = hashlib.sha3_256(
+    blinding_commitment = spec_hash_bytes(
         _STARK_DOMAIN + b"blinding" + b"".join(c.to_bytes(8, "big") for c in blinding_coeffs)
-    ).digest()
+    )
 
     witness_hash = _compute_witness_hash(entity_id, blinding_factor)
 

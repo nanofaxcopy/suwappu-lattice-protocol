@@ -3,14 +3,18 @@ rules:
     pattern: os.urandom(...)
     paths:
       exclude:
+        - src/ltp/entropy.py
         - src/ltp/primitives.py
         - src/ltp/shards.py
         - src/ltp/keypair.py
+        # DST harness, not the SDK — synthesizes test payloads/nonces.
+        - src/simulator/*
         - tests/*
     message: >
-      Direct os.urandom() call outside designated key/nonce generation modules.
-      CSPRNG usage should be centralized in primitives.py, shards.py, or keypair.py
-      to ensure consistent entropy sourcing and future HSM migration.
+      Direct os.urandom() call outside the sanctioned entropy modules.
+      Use ltp.entropy.secure_random_bytes() — the single CSPRNG chokepoint —
+      so entropy sourcing stays consistent and a future HSM/DRBG migration
+      is a one-module change.
     severity: WARNING
     languages: [python]
 
@@ -31,11 +35,23 @@ rules:
       - pattern-either:
         - pattern: logging.$LEVEL(..., $KEY, ...)
         - pattern: logger.$LEVEL(..., $KEY, ...)
+      # Message-format string literals are not key material.
+      - metavariable-pattern:
+          metavariable: $KEY
+          patterns:
+            - pattern-not: '"..."'
+      # Negative lookahead excludes the benign name classes that produced
+      # false positives when this rule was first wired into CI
+      # (2026-08-15): key *identifiers* (key_id), keypair objects (label /
+      # pub_hex are public), lengths (len(...), *_size), and hash
+      # fingerprints. Raw material names (_key/_sk/_dk/cek/secret/private)
+      # still match.
       - metavariable-regex:
           metavariable: $KEY
-          regex: '.*(?:_key|_sk|_dk|cek|secret|private).*'
+          regex: '^(?!.*(?:key_id|keypair|len\(|_size|_len|fingerprint|_fp\b)).*(?:_key|_sk|_dk|cek|secret|private).*'
     message: >
       Potential key material being logged. Never log private keys, CEKs,
-      decapsulation keys, or shared secrets.
+      decapsulation keys, or shared secrets. Log a hash fingerprint
+      (spec_hash_hex(key)[:16]) if an identifier is needed.
     severity: ERROR
     languages: [python]

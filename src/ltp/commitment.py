@@ -15,12 +15,12 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import struct
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
+from .entropy import secure_random_bytes
 from .primitives import MLDSA, canonical_hash, canonical_hash_bytes, internal_hash_bytes
 from .storage import MemoryShardStore
 
@@ -943,7 +943,7 @@ class CommitmentNetwork:
         # Security hardening: eviction registry, audit epochs, endowment
         self._eviction_registry: dict[str, dict] = {}  # node_id → eviction info
         self._audit_epoch: int = 0  # Monotonic audit epoch counter
-        self._audit_seed: bytes = os.urandom(32)  # VDF seed for audit randomization
+        self._audit_seed: bytes = secure_random_bytes(32)  # VDF seed for audit randomization
         self.endowment = StorageEndowment()  # Slash-and-burn fund
 
     def _invalidate_placement_cache(self) -> None:
@@ -1288,7 +1288,7 @@ class CommitmentNetwork:
                         shard_list.append((entity_id, shard_index))
 
         for entity_id, shard_index in shard_list:
-            nonces = [os.urandom(16) for _ in range(burst)]
+            nonces = [secure_random_bytes(16) for _ in range(burst)]
             burst_pass = True
 
             for nonce in nonces:

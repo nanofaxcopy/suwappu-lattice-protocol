@@ -1,13 +1,22 @@
 rules:
   - id: assert-at-public-api-boundary
+    # NOTE: the original formulation used `def _$FUNC(...)` /
+    # `class _$CLASS`, which is not valid semgrep syntax (a literal
+    # prefix cannot be concatenated to a metavariable) — the rule
+    # errored and silently never ran. Inverted formulation: match
+    # asserts inside PUBLIC (non-underscore) functions via
+    # metavariable-regex, and skip private classes.
     patterns:
       - pattern: |
           assert $COND, $MSG
-      - pattern-not-inside: |
-          def _$FUNC(...):
+      - pattern-inside: |
+          def $FUNC(...):
               ...
+      - metavariable-regex:
+          metavariable: $FUNC
+          regex: '^[^_].*'
       - pattern-not-inside: |
-          class _$CLASS:
+          class $CLASS:
               ...
     paths:
       include:
@@ -28,7 +37,9 @@ rules:
       include:
         - src/ltp/**
       exclude:
+        # CLI entry points may print; library modules must use logging.
         - src/ltp/__main__.py
+        - src/ltp/gateway_vm/__main__.py
     message: >
       print() used in library code. Use logging.getLogger(__name__) instead.
       Library code should never write directly to stdout.

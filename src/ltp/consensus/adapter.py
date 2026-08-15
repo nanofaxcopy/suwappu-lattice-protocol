@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from typing import TYPE_CHECKING, Iterator
 
 from .backend import LocalConsensusBackend
@@ -18,6 +17,7 @@ if TYPE_CHECKING:
     from ..execution.committee.dkg.threshold_signing import ThresholdSigningKey
     from ..execution.committee.manager import CommitteeManager
 
+from ..dual_lane.hashing import spec_hash_bytes, spec_hasher
 from ..execution.committee.dkg.threshold_signing import (
     DOMAIN_ATTESTATION,
     combine_partial_signatures,
@@ -93,7 +93,7 @@ class DagBftAdapter:
         if not self._running or self._backend is None:
             raise RuntimeError("Adapter not started")
         self._backend.submit_transactions([tx_bytes])
-        return hashlib.sha3_256(tx_bytes).digest()
+        return spec_hash_bytes(tx_bytes)
 
     def current_round(self) -> int:
         """Return the current consensus round."""
@@ -233,7 +233,7 @@ class DagBftAdapter:
 
         if len(batch_partials) >= threshold:
             combined_sig = combine_partial_signatures(batch_partials, threshold)
-            batch_digest = hashlib.sha3_256(batch_bytes).digest()
+            batch_digest = spec_hash_bytes(batch_bytes)
 
             attest_event = ConsensusEvent(
                 event_type=ConsensusEventType.COMMIT_ATTESTED,
@@ -251,7 +251,7 @@ class DagBftAdapter:
     @staticmethod
     def _serialize_batch(batch: OrderedBatch) -> bytes:
         """Deterministic serialization of OrderedBatch for signing."""
-        h = hashlib.sha3_256()
+        h = spec_hasher()
         h.update(batch.round.to_bytes(8, "big"))
         h.update(batch.epoch.to_bytes(8, "big"))
         h.update(len(batch.transactions).to_bytes(4, "big"))

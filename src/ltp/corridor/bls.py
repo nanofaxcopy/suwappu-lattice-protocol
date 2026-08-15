@@ -15,8 +15,7 @@ keyed to `BLS_CORRIDOR_DST`.
 
 from __future__ import annotations
 
-import os
-
+from ..entropy import secure_random_bytes
 from .constants import BLS_CORRIDOR_DST
 
 try:  # pragma: no cover — backend detection
@@ -61,7 +60,7 @@ def keygen() -> tuple[bytes, bytes]:
         sk.from_random()
         pk = _blst.P1(sk).compress()
         return bytes(pk), sk.to_bytes()
-    sk_bytes = os.urandom(SK_SIZE)
+    sk_bytes = secure_random_bytes(SK_SIZE)
     sk_int = int.from_bytes(sk_bytes, "big") % (_BLS_CURVE_ORDER - 1) + 1
     pk = bytes(_py_ecc_basic.SkToPk(sk_int))
     return pk, sk_int.to_bytes(SK_SIZE, "big")

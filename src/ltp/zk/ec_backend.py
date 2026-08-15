@@ -11,9 +11,10 @@ the ZK transfer module falls back to hash-based simulation.
 
 from __future__ import annotations
 
-import hashlib
-import os
 from typing import Any
+
+from ..dual_lane.hashing import spec_hash_bytes
+from ..entropy import secure_random_bytes
 
 # ---------------------------------------------------------------------------
 # py_ecc availability detection (mirrors primitives.py:59-84)
@@ -144,7 +145,7 @@ def g1_h_generator() -> G1Point:
 
     # Try-and-increment: hash seed with counter to find a valid x-coordinate
     for attempt in range(256):
-        h = hashlib.sha3_256(seed + attempt.to_bytes(2, "big")).digest()
+        h = spec_hash_bytes(seed + attempt.to_bytes(2, "big"))
         x = int.from_bytes(h, "big") % _FIELD_MODULUS
 
         # BLS12-381 G1 curve: y^2 = x^3 + 4
@@ -282,7 +283,7 @@ def scalar_from_entity_id(entity_id: str) -> int:
     Uses SHA3-256 of the entity_id bytes, reduced mod curve order.
     """
     _require_backend()
-    digest = hashlib.sha3_256(entity_id.encode()).digest()
+    digest = spec_hash_bytes(entity_id.encode())
     return int.from_bytes(digest, "big") % _BLS_ORDER
 
 
@@ -295,7 +296,7 @@ def scalar_from_bytes(b: bytes) -> int:
 def random_scalar() -> int:
     """Generate a cryptographically random BLS12-381 scalar."""
     _require_backend()
-    return int.from_bytes(os.urandom(32), "big") % _BLS_ORDER
+    return int.from_bytes(secure_random_bytes(32), "big") % _BLS_ORDER
 
 
 def curve_order() -> int:

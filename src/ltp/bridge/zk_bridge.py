@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..domain import DOMAIN_ZK_BRIDGE
+from ..entropy import secure_random_bytes
 from ..primitives import canonical_hash_bytes
 
 if TYPE_CHECKING:
@@ -323,7 +324,7 @@ class STARKBridgeProver(ZKBridgeProver):
 
         # Step 4: Add blinding polynomial for zero-knowledge
         blinding_coeffs = [
-            int.from_bytes(os.urandom(7), "big") % F.P for _ in range(len(witness_elems))
+            int.from_bytes(secure_random_bytes(7), "big") % F.P for _ in range(len(witness_elems))
         ]
         combined = F.poly_add(witness_elems, F.poly_mul_scalar(blinding_coeffs, F.exp(2, 40)))
 

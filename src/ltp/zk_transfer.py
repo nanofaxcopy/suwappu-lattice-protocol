@@ -24,12 +24,13 @@ Design decision: docs/design-decisions/ZK_TRANSFER_MODE.md
 from __future__ import annotations
 
 import hmac
-import os
 import warnings
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional
 
+from .dual_lane.hashing import spec_hash_bytes
+from .entropy import secure_random_bytes
 from .primitives import canonical_hash, canonical_hash_bytes
 
 __all__ = [
@@ -145,7 +146,7 @@ class ZKTransferMode:
 
         from .zk.stark_proof import stark_verify
 
-        key = hashlib.sha3_256(proof.proof_bytes).digest()
+        key = spec_hash_bytes(proof.proof_bytes)
         stark_obj = ZKTransferMode._stark_proof_cache.get(key)
         if stark_obj is None:
             return False
@@ -158,7 +159,7 @@ class ZKTransferMode:
         With py_ecc (GROTH16): Real Pedersen C = m*G + r*H on BLS12-381.
         Without py_ecc / SIMULATED / STARK: Hash-based simulation.
         """
-        blinding_factor = os.urandom(32)
+        blinding_factor = secure_random_bytes(32)
 
         if self._use_real_ec_backend():
             from .zk.pedersen import pedersen_commit
@@ -225,7 +226,7 @@ class ZKTransferMode:
             proof_bytes = canonical_hash_bytes(
                 entity_id.encode() + commitment.blinding_factor + b"groth16-proof"
             )
-            proof_bytes = proof_bytes + os.urandom(160)
+            proof_bytes = proof_bytes + secure_random_bytes(160)
         elif self.config.proof_system == ZKProofSystem.STARK:
             import hashlib as _hl
 
@@ -238,7 +239,7 @@ class ZKTransferMode:
             )
             proof_bytes = stark.to_bytes()
             # Cache the StarkProof object for verification
-            cache_key = _hl.sha3_256(proof_bytes).digest()
+            cache_key = spec_hash_bytes(proof_bytes)
             ZKTransferMode._stark_proof_cache[cache_key] = stark
         else:
             raise ValueError(f"Unknown proof system: {self.config.proof_system}")

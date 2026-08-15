@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import os
 
+from .entropy import secure_random_bytes
+
 __all__ = [
     "BLS",
     "_blst_available",
@@ -194,7 +196,7 @@ class BLS:
 
     @classmethod
     def _keygen_py_ecc(cls) -> tuple[bytes, bytes]:
-        sk_bytes = os.urandom(cls.SK_SIZE)
+        sk_bytes = secure_random_bytes(cls.SK_SIZE)
         sk_int = int.from_bytes(sk_bytes, "big") % (_BLS_CURVE_ORDER - 1) + 1
         sk_out = sk_int.to_bytes(cls.SK_SIZE, "big")
         pk = _py_ecc_bls.SkToPk(sk_int)

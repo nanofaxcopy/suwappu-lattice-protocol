@@ -27,7 +27,6 @@ This provides real chain integration where:
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import time
 from dataclasses import dataclass
@@ -36,6 +35,7 @@ from typing import TYPE_CHECKING, Optional
 from ..anchor.client import AnchorClient
 from ..anchor.submission import AnchorSubmission
 from ..domain import signer_fingerprint
+from ..dual_lane.hashing import spec_hash_bytes, spec_hasher
 from ..keypair import KeyPair
 from ..protocol import LTPProtocol
 from .anchor import L1Anchor
@@ -197,7 +197,7 @@ class LiveBridge:
 
     def _make_anchor_digest(self, entity_id: str, merkle_root: bytes) -> bytes:
         """Compute a 32-byte anchor digest from entity_id and merkle_root."""
-        h = hashlib.sha3_256()
+        h = spec_hasher()
         h.update(entity_id.encode() if isinstance(entity_id, str) else entity_id)
         h.update(merkle_root)
         return h.digest()
@@ -244,11 +244,11 @@ class LiveBridge:
         self._l1_sequence += 1
         valid_until = int(time.time()) + 3600
 
-        entity_id_hash = hashlib.sha3_256(
+        entity_id_hash = spec_hash_bytes(
             commitment.entity_id.encode()
             if isinstance(commitment.entity_id, str)
             else commitment.entity_id
-        ).digest()
+        )
 
         submission = AnchorSubmission(
             anchor_digest=anchor_digest,

@@ -10,8 +10,9 @@ Power-of-2 leaf count (padded with empty leaves if needed).
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
+
+from ..dual_lane.hashing import spec_hash_bytes
 
 _DOMAIN = b"SUWAPPU-LTP:zk-stark:v1\x00"
 _LEAF_TAG = _DOMAIN + b"stark-leaf"
@@ -20,11 +21,11 @@ _EMPTY_LEAF = b"\x00" * 32
 
 
 def _hash_leaf(data: bytes) -> bytes:
-    return hashlib.sha3_256(_LEAF_TAG + data).digest()
+    return spec_hash_bytes(_LEAF_TAG + data)
 
 
 def _hash_node(left: bytes, right: bytes) -> bytes:
-    return hashlib.sha3_256(_NODE_TAG + left + right).digest()
+    return spec_hash_bytes(_NODE_TAG + left + right)
 
 
 @dataclass(frozen=True)

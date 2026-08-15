@@ -21,10 +21,10 @@ Standards alignment:
 
 from __future__ import annotations
 
-import os
 from abc import ABC, abstractmethod
 from typing import Optional
 
+from .entropy import secure_random_bytes
 from .primitives import MLDSA, MLKEM, canonical_hash
 
 __all__ = ["HSMBackend", "SoftwareHSM"]
@@ -169,7 +169,7 @@ class SoftwareHSM(HSMBackend):
         # Per-instance secret seed for derive_kek(). Random per process;
         # production deployments override this by configuring a real HSM
         # whose KEK derivation happens in hardware.
-        self._kek_seed: bytes = os.urandom(32)
+        self._kek_seed: bytes = secure_random_bytes(32)
         # Internal KeyVault wraps stored private bytes. Uses a KEK derived
         # from the per-instance seed so wrapping is decoupled from the
         # application-level KeyVault.from_environment() chain and there

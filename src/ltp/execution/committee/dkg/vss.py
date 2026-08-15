@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-
 from src.ltp.zk.ec_backend import (
     bls12_381_available,
     g1_add,
@@ -15,6 +13,7 @@ from src.ltp.zk.ec_backend import (
     g1_serialize,
 )
 
+from ....dual_lane.hashing import spec_hash_bytes
 from .scalar_poly import ScalarField, ScalarPoly
 
 __all__ = ["PedersenVSS", "G_POINT", "H_POINT"]
@@ -34,7 +33,7 @@ def _derive_h_generator():
     seed = b"ETP-PEDERSEN-DKG-H"
 
     for attempt in range(256):
-        h = hashlib.sha3_256(seed + attempt.to_bytes(2, "big")).digest()
+        h = spec_hash_bytes(seed + attempt.to_bytes(2, "big"))
         x = int.from_bytes(h, "big") % field_modulus
         x_fq = FQ(x)
         y_squared = x_fq**3 + FQ(4)
