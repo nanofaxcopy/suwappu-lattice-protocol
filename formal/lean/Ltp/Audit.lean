@@ -1,6 +1,11 @@
 import Ltp.Counting
 import Ltp.Quorum
 import Ltp.Commitment
+import Ltp.LatticeKey
+import Ltp.Bandwidth
+import Ltp.Erasure
+import Ltp.Policy
+import Ltp.Governance
 
 /-
 Axiom audit.
@@ -44,3 +49,41 @@ open Suwappu.LTP.Commitment
 #print axioms Suwappu.LTP.Commitment.strict_total_unsatisfiable
 #print axioms Suwappu.LTP.Commitment.provenance_of_1600
 #print axioms Suwappu.LTP.Commitment.gap_is_one_signature
+
+-- Sealed lattice key size (Paper §2.2, §3.3.7)
+#print axioms Suwappu.LTP.LatticeKey.lattice_key_size_payload_independent
+#print axioms Suwappu.LTP.LatticeKey.lattice_key_size_eq_const
+#print axioms Suwappu.LTP.LatticeKey.sealed_768_min
+#print axioms Suwappu.LTP.LatticeKey.sealed_768_max
+#print axioms Suwappu.LTP.LatticeKey.sealed_768_bounded
+#print axioms Suwappu.LTP.LatticeKey.inner_payload_bounds
+#print axioms Suwappu.LTP.LatticeKey.record_exceeds_1kb
+
+-- Bandwidth cost model (Paper §6.4, Appendix A)
+#print axioms Suwappu.LTP.Bandwidth.rho_default
+#print axioms Suwappu.LTP.Bandwidth.rho_default_exact
+#print axioms Suwappu.LTP.Bandwidth.rho_default_ne_r
+#print axioms Suwappu.LTP.Bandwidth.commit_overhead_constant
+#print axioms Suwappu.LTP.Bandwidth.single_receiver_costs_more
+#print axioms Suwappu.LTP.Bandwidth.breakeven_iff
+#print axioms Suwappu.LTP.Bandwidth.amortisation_monotone
+
+-- Erasure reconstruction threshold (Paper §2.1.1, §4.3)
+#print axioms Suwappu.LTP.Erasure.reconstructable_iff
+#print axioms Suwappu.LTP.Erasure.no_index_privileged
+#print axioms Suwappu.LTP.Erasure.at_threshold_decodable
+#print axioms Suwappu.LTP.Erasure.below_threshold_undecodable
+#print axioms Suwappu.LTP.Erasure.decodable_monotone
+#print axioms Suwappu.LTP.Erasure.loss_budget
+
+-- Access-policy algebra (Paper §2.2.1, §8.4)
+#print axioms Suwappu.LTP.Policy.countOk_antitone
+#print axioms Suwappu.LTP.Policy.permits_antitone_count
+#print axioms Suwappu.LTP.Policy.one_time_exhausts
+#print axioms Suwappu.LTP.Policy.minimal_is_sound
+#print axioms Suwappu.LTP.Policy.attenuate_no_amplify
+
+-- Governance supermajority (Paper §5.1)
+#print axioms Suwappu.LTP.Governance.supermajority_safety
+#print axioms Suwappu.LTP.Governance.supermajority_liveness
+#print axioms Suwappu.LTP.Governance.safety_bound_tight
