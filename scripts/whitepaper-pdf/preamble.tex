@@ -1,0 +1,114 @@
+% LaTeX preamble for the LTP whitepaper PDF build (lualatex).
+%
+% Targets a preprint layout suitable for the IACR Cryptology ePrint Archive:
+% author name and contact on page 1 (ePrint does not accept anonymous
+% submissions), generated table of contents, and typeset math.
+
+% --- Fonts -----------------------------------------------------------------
+% lualatex + fontspec so the source's Unicode (α, ρ, ≥, →, ‖, ⊕, and the
+% box-drawing characters in the ASCII diagrams) typesets without a
+% substitution pass. DejaVu Sans Mono carries the box-drawing glyphs.
+% Fonts are selected by filename rather than family name so the build does
+% not depend on a populated fontconfig cache (CI containers rarely have one).
+\usepackage{fontspec}
+\usepackage{unicode-math}
+\setmainfont{texgyrepagella}[
+  Extension      = .otf,
+  UprightFont    = *-regular,
+  BoldFont       = *-bold,
+  ItalicFont     = *-italic,
+  BoldItalicFont = *-bolditalic,
+]
+\setsansfont{texgyreheros}[
+  Extension      = .otf,
+  UprightFont    = *-regular,
+  BoldFont       = *-bold,
+  ItalicFont     = *-italic,
+  BoldItalicFont = *-bolditalic,
+]
+\setmonofont{DejaVuSansMono}[
+  Extension      = .ttf,
+  UprightFont    = *,
+  BoldFont       = *-Bold,
+  ItalicFont     = *-Oblique,
+  Scale          = 0.82,
+]
+% Latin Modern Math is the only math font shipped with the base texlive
+% packages; it pairs acceptably with Pagella's text.
+\setmathfont{latinmodern-math.otf}
+
+% The related-work section names a Chinese standards body in Han script,
+% which no Latin text font covers. `preprocess.py` wraps CJK runs in
+% \ltpcjk so they typeset instead of silently vanishing. (luaotfload's
+% add_fallback mechanism is not used here: when its fallback font fails to
+% resolve it silently emits U+FFFD rather than erroring, which is worse
+% than no fallback at all.)
+\newfontfamily\ltpcjk{WenQuanYi Zen Hei}
+
+% --- Page ------------------------------------------------------------------
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{microtype}
+\setlength{\emergencystretch}{3em}   % last resort against overfull lines
+
+% --- Tables ----------------------------------------------------------------
+% The source carries ~90 tables, several of them wide comparison matrices.
+% Typeset them a size down and let long ones break across pages.
+\usepackage{longtable,booktabs,array}
+\usepackage{ragged2e}
+\AtBeginEnvironment{longtable}{\footnotesize}
+\setlength{\LTpre}{0.6\baselineskip}
+\setlength{\LTpost}{0.6\baselineskip}
+% Pandoc emits \real{} column widths against \linewidth; keep them honest.
+\setlength{\tabcolsep}{4pt}
+
+% --- Code ------------------------------------------------------------------
+\usepackage{fvextra}
+\fvset{fontsize=\small,breaklines=true,breakanywhere=true,commandchars=\\\{\}}
+% Pandoc defines its own `Highlighting` environment for syntax-highlighted
+% code, which overrides the \fvset above and leaves long lines running past
+% the margin (the protocol pseudocode has some very long ones). Redefine it
+% once pandoc's preamble has been read, keeping line breaking on.
+\AtBeginDocument{%
+  \DefineVerbatimEnvironment{Highlighting}{Verbatim}{%
+    commandchars=\\\{\},fontsize=\small,breaklines=true,breakanywhere=true}%
+  \DefineVerbatimEnvironment{verbatim}{Verbatim}{%
+    fontsize=\small,breaklines=true,breakanywhere=true}%
+}
+\usepackage{framed}
+\usepackage{xcolor}
+\definecolor{shadecolor}{gray}{0.96}
+
+% --- Links -----------------------------------------------------------------
+\usepackage{hyperref}
+\hypersetup{
+  colorlinks=true,
+  linkcolor=[rgb]{0.10,0.25,0.55},
+  urlcolor=[rgb]{0.10,0.25,0.55},
+  citecolor=[rgb]{0.10,0.25,0.55},
+  pdfborder={0 0 0},
+}
+\usepackage[all]{hypcap}
+
+% --- Headings --------------------------------------------------------------
+\usepackage{titlesec}
+\titleformat{\section}{\Large\bfseries\sffamily}{\thesection}{0.6em}{}
+\titleformat{\subsection}{\large\bfseries\sffamily}{\thesubsection}{0.6em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries\sffamily}{\thesubsubsection}{0.6em}{}
+% The Markdown headings already carry their own section numbers ("2.1 Phase 1:
+% COMMIT"), so LaTeX must not add a second set — hence no --number-sections in
+% build.sh and no counter numbering here. The TOC still lists to three levels.
+\setcounter{secnumdepth}{0}
+\setcounter{tocdepth}{3}
+
+% --- Running head ----------------------------------------------------------
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\footnotesize\sffamily LTP: Lattice Transfer Protocol}
+\fancyhead[R]{\footnotesize\sffamily v\ltpversion}
+\fancyfoot[C]{\footnotesize\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+% Pandoc requires this for its tight lists.
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}

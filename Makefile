@@ -3,7 +3,7 @@
 # Quick commands for testing, building, and deployment verification.
 
 .PHONY: test test-python test-contracts test-integration test-all
-.PHONY: build lint clean ci-integration audit abi help docs-api
+.PHONY: build lint clean ci-integration audit abi help docs-api docs-whitepaper
 .PHONY: slither echidna solhint contracts-secaudit contracts-invariants
 
 # ── Python Tests ────────────────────────────────────────────────────────
@@ -105,6 +105,9 @@ docs-api:  ## Generate Python API reference from docstrings into docs/api/python
 	python3 -m pdoc src/ltp -o docs/api/python --docformat google
 	@echo "✓ wrote docs/api/python/ltp.html and module pages"
 
+docs-whitepaper:  ## Typeset docs/WHITEPAPER.md into build/whitepaper/ltp-whitepaper.pdf
+	scripts/whitepaper-pdf/build.sh
+
 # ── Smart-contract security suite ───────────────────────────────────────
 #
 # These targets run static analysis + property fuzz + linting against
@@ -155,6 +158,7 @@ help:
 	@echo "  make lint                syntax check"
 	@echo "  make clean               remove caches + build outputs"
 	@echo "  make docs-api            generate Python API reference (pdoc)"
+	@echo "  make docs-whitepaper     typeset the whitepaper PDF (pandoc + lualatex)"
 	@echo ""
 	@echo "Smart-contract security:"
 	@echo "  make slither             Slither static analysis"
