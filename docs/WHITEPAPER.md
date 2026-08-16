@@ -13,7 +13,7 @@
 
 | **Author** | **Version** | **Date** | **Status** | **Classification** |
 |:----------:|:-----------:|:--------:|:----------:|:------------------:|
-| Jas Strokus | 0.1.0-draft | 2026-03-29 | Protocol Draft | Public |
+| Jas Strokus | 0.2.0 | 2026-08-17 | Public Draft — Request for Comments | Public |
 
 </div>
 
@@ -36,7 +36,7 @@ size, with full post-quantum security as a default.
 |:---------|:----------|:----------|
 | Sender→receiver path | O(1) constant-size sealed key, independent of entity size | ML-KEM-768 (FIPS 203) |
 | Immutability | Content-addressed EntityID — any modification produces a different identity | BLAKE3-256 |
-| Threshold secrecy | Fewer than *k* shards reveal zero information about entity content | Information-theoretic |
+| Threshold secrecy | Fewer than *k* shards reveal zero information about content that is not guessable/enumerable (see §3.3.5); guessable content requires ZK mode | Information-theoretic |
 | Non-repudiation | Append-only signed commitment record on a Merkle log | ML-DSA-65 (FIPS 204) |
 | Post-quantum security | Standard mode fully PQ-safe — no X25519 or Ed25519 in the protocol | ML-KEM + ML-DSA + BLAKE3 |
 | ZK privacy mode | Hiding commitment for EntityID fingerprinting prevention | Groth16 / BLS12-381 ⚠ |
@@ -68,14 +68,14 @@ ML-DSA-65 · BLAKE3 · Certificate Transparency · Reed-Solomon coding
         - [1.1.1 Shape Specification](#111-shape-specification)
     - [1.2 The Entity Identity Function](#12-the-entity-identity-function)
 - [2. The Three Phases of Transfer](#2-the-three-phases-of-transfer)
-    - [2.1 Phase 1: COMMIT](#phase-1-commit)
+    - [2.1 Phase 1: COMMIT](#21-phase-1-commit)
         - [2.1.1 Deterministic Sharding](#211-deterministic-sharding)
         - [2.1.2 Distributed Shard Placement](#212-distributed-shard-placement)
         - [2.1.3 The Commitment Record](#213-the-commitment-record)
-    - [2.2 Phase 2: LATTICE](#phase-2-lattice)
+    - [2.2 Phase 2: LATTICE](#22-phase-2-lattice)
         - [2.2.1 The Lattice Key](#221-the-lattice-key)
         - [2.2.2 Key Properties of the Lattice Key](#222-key-properties-of-the-lattice-key)
-    - [2.3 Phase 3: MATERIALIZE](#phase-3-materialize)
+    - [2.3 Phase 3: MATERIALIZE](#23-phase-3-materialize)
         - [2.3.1 Reconstruction Process](#231-reconstruction-process)
         - [2.3.2 Why This Is Fast](#232-why-this-is-fast)
 - [3. Security Model](#3-security-model)
@@ -93,6 +93,7 @@ ML-DSA-65 · BLAKE3 · Certificate Transparency · Reed-Solomon coding
         - [3.3.5 Threshold Secrecy (Information-Theoretic)](#335-threshold-secrecy-information-theoretic)
         - [3.3.6 Transfer Immutability (Composite Game)](#336-transfer-immutability-composite-game)
         - [3.3.7 What Cannot Be Formally Proven](#337-what-cannot-be-formally-proven)
+        - [3.3.8 Machine-Checked Verification Status](#338-machine-checked-verification-status)
 - [4. Immutability Guarantees](#4-immutability-guarantees)
     - [4.1 Why Immutability Is Inherent](#41-why-immutability-is-inherent)
     - [4.2 Versioning vs. Mutation](#42-versioning-vs-mutation)
@@ -148,6 +149,7 @@ ML-DSA-65 · BLAKE3 · Certificate Transparency · Reed-Solomon coding
 **Appendices**
 
 - [Appendix A: High-Latency Link Optimization (Thought Experiment)](#appendix-a-high-latency-link-optimization-thought-experiment)
+- [Revision History](#revision-history)
 
 ---
 
@@ -166,6 +168,9 @@ The name **"Lattice"** is deliberately chosen for its triple resonance with the 
 The name does **not** imply any connection to quantum entanglement, quantum mechanics, or
 quantum information theory. The protocol operates entirely within classical computing and
 post-quantum cryptography.
+
+The protocol was formerly named **ETP (Entanglement Transfer Protocol)**; some repository
+artifacts (e.g., `docs/formal/etp-protocol.vp`) retain the old name.
 
 ---
 
@@ -187,7 +192,7 @@ from distributed shards. The protocol achieves:
 > no classical-only primitives. ZK transfer mode (§3.2) uses Groth16 over BLS12-381, which
 > is vulnerable to Shor's algorithm and does **not** provide quantum-resistant hiding. **ZK
 > mode MUST NOT be used in deployments with a quantum-adversary threat model.** The planned
-> upgrade path is a STARK or lattice-based proof system (§3.2.4, §10 Open Question 8).
+> upgrade path is a STARK or lattice-based proof system (§3.2.4, §10 Open Question 6).
 
 ---
 
@@ -320,9 +325,9 @@ The three phases provide cumulative security guarantees, formalized in §3.3:
 | **LATTICE** | Signed commitment binds sender | ML-KEM-768 sealed to receiver (IND-CCA2) | Fresh encapsulation per transfer | Theorems 5, 8 (§3.3.3, §3.3.6) |
 | **MATERIALIZE** | Signature + Merkle root verified | Plaintext reconstructed by receiver only | Preserved (ephemeral shared secret discarded) | Theorems 6, 7 (§3.3.4, §3.3.5) |
 
-This follows the pattern established by the Noise Protocol Framework [Perrin, 2018], where security properties are tracked per-message through the handshake. ETP's three phases correspond to a three-message protocol with strictly increasing security guarantees.
+This follows the pattern established by the Noise Protocol Framework [Perrin, 2018], where security properties are tracked per-message through the handshake. LTP's three phases correspond to a three-message protocol with strictly increasing security guarantees.
 
-### Phase 1: COMMIT
+### 2.1 Phase 1: COMMIT
 
 The sender does not prepare the entity for transmission. Instead, the sender **commits** the
 entity to a distributed commitment layer.
@@ -356,32 +361,38 @@ entity — the RS encoding is fully specified as follows:
 |-----------|-------|-------|
 | Field | GF(2⁸) | 8-bit finite field |
 | Primitive polynomial | $x^8 + x^4 + x^3 + x^2 + 1$ (0x11d) | Standard GF(2⁸) construction; same as used in AES, ISA-L, BackBlaze |
-| Generator element | $\alpha = \texttt{0x02}$ | Primitive root of GF(2⁸) under 0x11d |
-| Evaluation points | $\{1,\, \alpha,\, \alpha^2,\, \ldots,\, \alpha^{n-1}\}$ | Powers of generator; row $i$ of encoding matrix has entries $[\alpha^{0 \cdot i}, \alpha^{1 \cdot i}, \ldots, \alpha^{(k-1) \cdot i}]$ |
-| Encoding matrix | Vandermonde: $V[i][j] = \alpha^{i \cdot j}$ for $i \in [0,n)$, $j \in [0,k)$ | Non-systematic; any $k$ rows are invertible (MDS property) |
+| Generator element | $\alpha = \texttt{0x02}$ | Primitive root of GF(2⁸) under 0x11d; used to construct the field's exp/log tables for GF(2⁸) multiplication |
+| Evaluation points | $\{1, 2, \ldots, n\}$ (i.e., $\alpha_i = i + 1$ for row $i \in [0,n)$) | Distinct non-zero field elements; $n \leq 255$ |
+| Encoding matrix | Vandermonde: $V[i][j] = \alpha_i^{\,j}$ for $i \in [0,n)$, $j \in [0,k)$ | Non-systematic; any $k$ rows form an invertible Vandermonde submatrix (MDS property) |
 | Decoding | Gauss-Jordan elimination over GF(2⁸) | Select any $k$ available rows, invert $k \times k$ submatrix |
-| Shard size | $\lceil |$entity$| / k \rceil$ bytes, zero-padded to equal length | Entity is split into $k$ equal data chunks before encoding |
+| Shard size | $\lceil (|\text{entity}| + 8) / k \rceil$ bytes | Entity is framed with an 8-byte big-endian length prefix, zero-padded to a multiple of $k$, then split into $k$ equal chunks (see the Complete Test Vector below) |
+
+Note that $n \leq 255$: GF(2⁸) has only 255 distinct non-zero evaluation points. Larger
+shard counts require a larger field and are out of scope for v1.
 
 The `algorithm` field in the commitment record (see §2.1.3) MUST be `"reed-solomon-gf256"`
 with the parameters above. Implementations MUST NOT use a different primitive polynomial,
 generator, or matrix construction and claim conformance with this identifier.
 
-**Interoperability test vector.** Encoding a 4-byte entity `[0x01, 0x02, 0x03, 0x04]`
-with $n=4$, $k=2$ under these parameters produces the following shards (in hex). The entity
-is split into $k=2$ coefficient chunks: $c_0 = [\texttt{0x01}, \texttt{0x02}]$,
-$c_1 = [\texttt{0x03}, \texttt{0x04}]$. For each byte position $b$, the encoding evaluates
+**Interoperability test vector.** This vector illustrates the **bare matrix encoding** of
+two already-split chunks, with the length-prefix framing omitted for pedagogical clarity —
+the full pipeline including the 8-byte length prefix is shown in the Complete Test Vector
+below. Encoding the chunks $c_0 = [\texttt{0x01}, \texttt{0x02}]$,
+$c_1 = [\texttt{0x03}, \texttt{0x04}]$ (from the 4-byte input `[0x01, 0x02, 0x03, 0x04]`)
+with $n=4$, $k=2$ under these parameters produces the following shards (in hex). For each
+byte position $b$, the encoding evaluates
 $p_b(x) = c_0[b] \oplus (c_1[b] \otimes_{\text{GF}} x)$ at evaluation points
-$\alpha^i$. All arithmetic is in GF(2⁸) under 0x11d (addition = XOR, multiplication = finite
-field multiply).
+$\alpha_i = i + 1 \in \{1, 2, 3, 4\}$. All arithmetic is in GF(2⁸) under 0x11d
+(addition = XOR, multiplication = finite field multiply).
 
-- Shard 0 ($\alpha^0 = 1$): `0x02 0x06`  *($p_0(1) = \texttt{0x01} \oplus \texttt{0x03} = \texttt{0x02}$, $p_1(1) = \texttt{0x02} \oplus \texttt{0x04} = \texttt{0x06}$)*
-- Shard 1 ($\alpha^1 = 2$): `0x07 0x0A`  *($p_0(2) = \texttt{0x01} \oplus (2 \otimes_{\text{GF}} \texttt{0x03}) = \texttt{0x01} \oplus \texttt{0x06} = \texttt{0x07}$, $p_1(2) = \texttt{0x02} \oplus (2 \otimes_{\text{GF}} \texttt{0x04}) = \texttt{0x02} \oplus \texttt{0x08} = \texttt{0x0A}$)*
-- Shard 2 ($\alpha^2 = 4$): `0x0D 0x12`  *($p_0(4) = \texttt{0x01} \oplus (4 \otimes_{\text{GF}} \texttt{0x03}) = \texttt{0x01} \oplus \texttt{0x0C} = \texttt{0x0D}$, $p_1(4) = \texttt{0x02} \oplus (4 \otimes_{\text{GF}} \texttt{0x04}) = \texttt{0x02} \oplus \texttt{0x10} = \texttt{0x12}$)*
-- Shard 3 ($\alpha^3 = 8$): `0x19 0x22`  *($p_0(8) = \texttt{0x01} \oplus (8 \otimes_{\text{GF}} \texttt{0x03}) = \texttt{0x01} \oplus \texttt{0x18} = \texttt{0x19}$, $p_1(8) = \texttt{0x02} \oplus (8 \otimes_{\text{GF}} \texttt{0x04}) = \texttt{0x02} \oplus \texttt{0x20} = \texttt{0x22}$)*
-- Any 2 of 4 shards reconstruct the original 4 bytes.
+- Shard 0 ($\alpha_0 = 1$): `0x02 0x06`  *($p_0(1) = \texttt{0x01} \oplus \texttt{0x03} = \texttt{0x02}$, $p_1(1) = \texttt{0x02} \oplus \texttt{0x04} = \texttt{0x06}$)*
+- Shard 1 ($\alpha_1 = 2$): `0x07 0x0A`  *($p_0(2) = \texttt{0x01} \oplus (2 \otimes_{\text{GF}} \texttt{0x03}) = \texttt{0x01} \oplus \texttt{0x06} = \texttt{0x07}$, $p_1(2) = \texttt{0x02} \oplus (2 \otimes_{\text{GF}} \texttt{0x04}) = \texttt{0x02} \oplus \texttt{0x08} = \texttt{0x0A}$)*
+- Shard 2 ($\alpha_2 = 3$): `0x04 0x0E`  *($p_0(3) = \texttt{0x01} \oplus (3 \otimes_{\text{GF}} \texttt{0x03}) = \texttt{0x01} \oplus \texttt{0x05} = \texttt{0x04}$, $p_1(3) = \texttt{0x02} \oplus (3 \otimes_{\text{GF}} \texttt{0x04}) = \texttt{0x02} \oplus \texttt{0x0C} = \texttt{0x0E}$)*
+- Shard 3 ($\alpha_3 = 4$): `0x0D 0x12`  *($p_0(4) = \texttt{0x01} \oplus (4 \otimes_{\text{GF}} \texttt{0x03}) = \texttt{0x01} \oplus \texttt{0x0C} = \texttt{0x0D}$, $p_1(4) = \texttt{0x02} \oplus (4 \otimes_{\text{GF}} \texttt{0x04}) = \texttt{0x02} \oplus \texttt{0x10} = \texttt{0x12}$)*
+- Any 2 of 4 shards reconstruct the original chunks.
 
 Note: Because the encoding is **non-systematic**, even shard 0 (at evaluation point
-$\alpha^0 = 1$) computes $c_0[b] \oplus c_1[b]$, which does not equal the raw data chunk
+$\alpha_0 = 1$) computes $c_0[b] \oplus c_1[b]$, which does not equal the raw data chunk
 unless $c_1[b] = 0$. Implementations that produce raw data chunks as the first $k$ shards
 are implementing a *systematic* code, which is not conformant.
 
@@ -410,11 +421,20 @@ Step 3: Evaluate polynomial p(α) = d₀ + d₁·α + d₂·α² at each α
   Shard 1 (α=2): p(2)  = d₀ ⊕ GF_mul(2,d₁) ⊕ GF_mul(4,d₂)
   ... (all arithmetic in GF(2⁸) with polynomial 0x11D)
 
+  Shard 0 (α=1): 0x6C 0x6C 0x69 0x69 0x65
+  Shard 1 (α=2): 0xAD 0xAD 0xAD 0x14 0xCA
+  Shard 2 (α=3): 0xC1 0xC1 0xC4 0x7D 0xAF
+  Shard 3 (α=4): 0x8E 0x8E 0xA6 0x17 0x89
+  Shard 4 (α=5): 0xE2 0xE2 0xCF 0x7E 0xEC
+  Shard 5 (α=6): 0x23 0x23 0x0B 0x03 0x43
+
 Step 4: Any 3 of 6 shards reconstruct via Vandermonde inversion
-  Reconstruction verified: decode({0,2,4}) = decode({1,3,5}) = original
+  Reconstruction verified: decode({0,2,4}) = decode({1,3,5}) = decode({3,4,5})
+  = original ("Hello!"), verified against the reference implementation
+  (src/ltp/erasure.py)
 ```
 
-Implementers SHOULD verify their erasure coding implementation against this vector and the ACVP test suite in `tests/test_formal_math.py`.
+Implementers SHOULD verify their erasure coding implementation against these vectors and the reference tests in `tests/test_erasure.py` and `tests/test_formal_math.py`. NIST ACVP vectors cover only the ML-KEM/ML-DSA primitives (`tests/test_acvp_mlkem.py`, `tests/test_acvp_mldsa.py`), not erasure coding.
 
 **Security Invariant — Nonce Derivation:**
 
@@ -424,8 +444,10 @@ Each shard's AEAD nonce is derived as:
 nonce_i = H(CEK || entity_id || shard_index)[:nonce_len]
 ```
 
-where `nonce_len` is the AEAD algorithm's required nonce length (e.g., 12 bytes for
-AES-256-GCM or ChaCha20-Poly1305) and `H` is the protocol's hash function. This construction
+where `nonce_len` is the AEAD algorithm's required nonce length and `H` is the protocol's
+hash function. The reference implementation's AEAD is **XChaCha20-Poly1305** (24-byte /
+192-bit nonce); AES-256-GCM and ChaCha20-Poly1305 (12-byte / 96-bit nonce) are conformant
+alternatives. This construction
 provides defense-in-depth: nonce uniqueness depends on both CEK freshness *and* the
 entity's identity, meaning a (CEK, entity_id) pair is sufficient to guarantee distinct
 nonces across all shards of a single entity.
@@ -437,9 +459,11 @@ seed-state cloning (e.g., VM snapshot/restore) or cached CEK reuse across retry 
 
 **CEK reuse across entities is mitigated** by the nonce derivation scheme: two different
 entities with the same CEK but different entity_ids produce different nonces, so their
-(CEK, nonce) pairs collide with negligible probability, bounded by $q^2 / 2^{97}$ under the
-random oracle model, where $q$ is the number of (entity\_id, shard\_index) pairs encrypted
-under the same CEK. CEKs MUST still be generated fresh per entity from a
+(CEK, nonce) pairs collide with negligible probability, bounded by the birthday bound
+$q^2 / 2^{\text{nonce\_bits}+1}$ under the random oracle model, where $q$ is the number of
+(entity\_id, shard\_index) pairs encrypted under the same CEK — i.e., $q^2 / 2^{97}$ for a
+96-bit nonce (AES-256-GCM, ChaCha20-Poly1305) and $q^2 / 2^{193}$ for the reference
+implementation's 192-bit XChaCha20-Poly1305 nonce. CEKs MUST still be generated fresh per entity from a
 CSPRNG (e.g., `os.urandom`, `/dev/urandom`, `CryptGenRandom`) as a defense-in-depth
 measure. Each commit operation MUST generate a fresh CEK regardless of content or entity_id.
 Implementations SHOULD validate that the CEK is not degenerate (all-zero, all-one).
@@ -476,14 +500,20 @@ commitment log (this can be a blockchain, a Merkle DAG, or any immutable append-
 }
 ```
 
+Note on the `eval` label: the string `"vandermonde-powers-of-0x02"` is a frozen historical
+identifier retained for record-hash compatibility (`encoding_params` is hashed and signed).
+The evaluation points it denotes are $\alpha_i = i + 1$ as specified in §2.1.1 — the
+label's "powers-of-0x02" wording predates the re-baseline and MUST NOT be parsed
+semantically. Conformance is defined by §2.1.1, not by the label.
+
 Critical security property: the commitment record contains **no individual shard IDs**.
 Only a Merkle root of hashes of **encrypted** shards is stored. This reveals nothing
 about the plaintext content — they are hashes of ciphertext.
 
-The record is the **proof that the entity exists and was committed**. It is small (< 1 KB),
-immutable, and independently verifiable.
+The record is the **proof that the entity exists and was committed**. It is small (≈3.5 KB,
+dominated by the 3,309-byte ML-DSA-65 signature), immutable, and independently verifiable.
 
-### Phase 2: LATTICE
+### 2.2 Phase 2: LATTICE
 
 The sender transmits a minimal **lattice key** to the receiver. This is the only data
 that traverses the sender → receiver path directly.
@@ -510,7 +540,7 @@ The entire key is **sealed** via ML-KEM-768 (FIPS 203) key encapsulation. Each s
 operation generates a fresh encapsulation, providing forward secrecy per transfer.
 
 The lattice key is:
-- **Minimal** — ~160 bytes inner payload, ~1,300 bytes sealed, regardless of entity size
+- **Minimal** — ~120–150 bytes inner payload, ~1,300 bytes sealed, regardless of entity size
 - **Sealed** — ML-KEM encapsulated to the receiver's encapsulation key (quantum-resistant)
 - **Self-authenticating** — contains the commitment reference for verification
 - **Policy-bound** — includes access rules (one-time, time-limited, delegatable, etc.)
@@ -560,6 +590,9 @@ creates several remarkable properties:
    a unique (shared_secret, ciphertext) pair per seal. The shared_secret is used once for AEAD
    encryption and then immediately zeroized. Compromising the receiver's decapsulation key
    after the shared_secret has been destroyed does not expose historical transfers.
+   This guarantee holds for **ephemeral materialization**: a receiver that caches the
+   unsealed CEK (e.g., for later re-materialization) voids forward secrecy for that
+   transfer — a later compromise of the cached CEK exposes the entity.
 
    **Forward secrecy lifecycle:**
    1. `seal()` calls ML-KEM.Encaps(receiver_ek) → fresh (ss, kem_ct)
@@ -571,7 +604,7 @@ creates several remarkable properties:
    6. For defense-in-depth, receivers SHOULD rotate ek/dk periodically;
       old dk values MUST be securely destroyed after rotation
 
-### Phase 3: MATERIALIZE
+### 2.3 Phase 3: MATERIALIZE
 
 The receiver uses the lattice key to **reconstruct** the entity from the commitment layer.
 
@@ -579,23 +612,26 @@ The receiver uses the lattice key to **reconstruct** the entity from the commitm
 
 ```
 1. Unseal lattice key with receiver's private key → extract entity_id, CEK, commitment_ref
-2. Fetch commitment record from append-only log using entity_id
-3. Verify commitment record: H(record) == commitment_ref (integrity check)
-4. Verify commitment record signature (sender authenticity)
-5. Read encoding params (n, k) from commitment record
-6. Derive shard locations: ConsistentHash(entity_id || shard_index) for index in 0..n-1
-7. Fetch k-of-n ENCRYPTED shards from nearest available commitment nodes (parallel)
-8. Decrypt each shard: AEAD_Decrypt(CEK, encrypted_shard, nonce=H(CEK || entity_id || shard_index)[:nonce_len])
+2. Enforce access policy from the unsealed lattice key: verify the current time falls
+   within [not_before, not_after] and the materialization count does not exceed
+   max_materializations (§2.2.1) — abort before any shard fetch if the policy fails
+3. Fetch commitment record from append-only log using entity_id
+4. Verify commitment record: H(record) == commitment_ref (integrity check)
+5. Verify commitment record signature (sender authenticity)
+6. Read encoding params (n, k) from commitment record
+7. Derive shard locations: ConsistentHash(entity_id || shard_index) for index in 0..n-1
+8. Fetch k-of-n ENCRYPTED shards from nearest available commitment nodes (parallel)
+9. Decrypt each shard: AEAD_Decrypt(CEK, encrypted_shard, nonce=H(CEK || entity_id || shard_index)[:nonce_len])
    — AEAD authentication tag is verified BEFORE decryption (tamper detection)
-9. ErasureDecode(decrypted_shards, k) → entity content
-10. Verify: H(entity_content || shape || timestamp || sender_pubkey) == entity_id
+10. ErasureDecode(decrypted_shards, k) → entity content
+11. Verify: H(entity_content || shape || timestamp || sender_pubkey) == entity_id
     — *End-to-end content integrity check.* This is distinct from the Merkle root verification
-    in steps 3–4, which confirms commitment record integrity. This step independently verifies
+    in steps 4–5, which confirms commitment record integrity. This step independently verifies
     that the reconstructed content matches the EntityID, providing a second line of defense:
     an adversary who substitutes a valid-but-different commitment record (one whose signature
     and Merkle root internally check out, but which references a different entity) cannot
     pass this check, because the reconstructed content will hash to a different EntityID.
-11. Entity materialized. Transfer complete.
+12. Entity materialized. Transfer complete.
 ```
 
 #### 2.3.2 Why This Is Fast
@@ -672,6 +708,12 @@ impact of key compromise (cf. NIST SP 800-57 §5.3, WireGuard rekey every 2 minu
 5. **Chain verification:** Any party can verify the key chain by checking that each
    key's `predecessor_vk_hash` matches $H(vk)$ of the previous key.
 
+**Rotation gap (disclosed limitation).** A sealed-but-unmaterialized lattice key older
+than the rotation grace period (default: 1 hour) becomes **permanently undecryptable**
+once the old $dk$ is zeroized — no re-sealing mechanism exists in v1. Senders SHOULD
+re-seal outstanding lattice keys to the receiver's new encapsulation key when they
+observe a receiver key rotation.
+
 **Key chain structure:**
 
 ```
@@ -684,6 +726,14 @@ The key chain provides **non-repudiation continuity**: if a sender rotates keys,
 the chain proves that all historical commitment signatures are attributable to
 the same identity (verifiable via the `predecessor_vk_hash` chain).
 
+#### Deferred specification items
+
+The exact serialization of the lattice-key inner payload, the sealed-key wire format, the
+consistent-hashing variant and its parameters (Karger ring / jump hash / rendezvous), and
+the commitment-record serialization are deliberately deferred to the wire-format
+specification (LTP-corridor-v1) and are not normative in this paper. The reference
+implementation's AEAD is XChaCha20-Poly1305.
+
 ---
 
 ## 3. Security Model
@@ -695,7 +745,7 @@ the same identity (verifiable via the `predecessor_vk_hash` chain).
 | Man-in-the-middle intercepts lattice key | Entire key is sealed (envelope-encrypted) to receiver's public key; interceptor sees opaque ciphertext with zero metadata |
 | Attacker scrapes commitment log | Log contains only Merkle root of encrypted shard hashes — no shard IDs, no content, no CEK |
 | Attacker fetches shards from nodes | Shards are AEAD-encrypted with CEK; without CEK, ciphertext is computationally useless |
-| Attacker compromises < k nodes | Information-theoretic security: < k shards (even decrypted) reveal zero information about the entity |
+| Attacker compromises < k nodes | Information-theoretic security: < k shards (even decrypted) reveal zero information about content that is not guessable/enumerable (see §3.3.5); guessable content requires ZK mode |
 | Sender denies transfer occurred | Commitment record is on immutable append-only log with sender's signature |
 | Receiver claims different data was sent | Entity ID is deterministic hash of content; both parties can verify |
 | Replay attack (re-use lattice key) | Access policy can enforce one-time materialization; commitment nodes track access |
@@ -712,7 +762,7 @@ fingerprinting while preserving immutability and non-repudiation.
 **Scope.** This section specifies the core ZK mode instantiation sufficient to close the
 confidentiality gap in §3.3.3. Content-property proofs (e.g., proving "this entity is a valid
 JSON document" without revealing content) require additional circuit composition and are
-deferred to a future protocol version (see §10, Open Question 8).
+deferred to a future protocol version (see §10, Open Question 6).
 
 #### 3.2.1 Modified Commitment Record
 
@@ -761,8 +811,9 @@ and sub-millisecond verification. The per-circuit trusted setup is a deployment 
 discussed in §3.2.4.
 
 **Hash function:** ZK mode uses Poseidon [17] in place of BLAKE3 for all circuit-internal
-hash operations. Poseidon is ZK-friendly (designed for low R1CS gate count). When §1.2
-specifies "BLAKE3 or Poseidon," ZK mode MUST use Poseidon.
+hash operations. Poseidon is ZK-friendly (designed for low R1CS gate count). §1.2 specifies
+BLAKE3-256 for content addressing; inside ZK circuits, implementations MUST use Poseidon
+(circuit-efficient) as specified here.
 
 **The relation R_ZK:**
 
@@ -840,7 +891,7 @@ bound of Theorem 5 holds unconditionally under ZK mode.
    Until a post-quantum ZK instantiation is standardized and integrated, deployments
    requiring both content-privacy (hiding) and quantum resistance SHOULD forgo ZK mode and
    accept the EntityID fingerprinting limitation of §3.3.3, mitigated by ensuring entity
-   content has sufficient min-entropy (§3.3.3 guidance). See §10, Open Question 8.
+   content has sufficient min-entropy (§3.3.3 guidance). See §10, Open Question 6.
 
 3. **Content-property proofs.** R_ZK proves commitment consistency only, not content
    constraints. Application-layer predicates ("entity_content is valid JSON with `amount ∈
@@ -968,7 +1019,7 @@ $\mathsf{Adv}^{\text{AUTH}}_{\text{AEAD}}$ is the AEAD authentication advantage.
 
 #### 3.3.3 Transfer Confidentiality (IND-CPA)
 
-**ML-KEM-768 Security Parameters.** The sealed lattice key's confidentiality reduces to the Module-LWE problem with parameters (k=3, q=3329, η₁=2, η₂=2), achieving NIST Security Level 3 — equivalent to AES-192 against quantum adversaries. The IND-CCA2 property is obtained via the Fujisaki-Okamoto transform applied to an IND-CPA-secure K-PKE scheme [Bos et al., 2017; FIPS 203 §4]. The recent formal verification of Signal's PQXDH protocol [Bhargavan et al., USENIX Security 2024] — the first machine-checked post-quantum security proof of a real-world protocol using CryptoVerif — identified a KEM binding property requirement: the KEM ciphertext must be bound to the encapsulation key. ETP satisfies this property because the sealed lattice key includes the entity_id (which is derived from the sender's verification key) alongside the KEM ciphertext.
+**ML-KEM-768 Security Parameters.** The sealed lattice key's confidentiality reduces to the Module-LWE problem with parameters (k=3, q=3329, η₁=2, η₂=2), achieving NIST Security Level 3 — equivalent to AES-192 against quantum adversaries. The IND-CCA2 property is obtained via the Fujisaki-Okamoto transform applied to an IND-CPA-secure K-PKE scheme [Bos et al., 2017; FIPS 203 §4]. The recent formal verification of Signal's PQXDH protocol [Bhargavan et al., USENIX Security 2024] — the first machine-checked post-quantum security proof of a real-world protocol using CryptoVerif — identified a KEM binding property requirement: the KEM ciphertext must be bound to the *receiver's encapsulation key*. **LTP's current sealed-key construction does NOT discharge this property**: the sealed lattice key binds entity_id (derived from the sender's verification key) but contains no receiver key material, so the ciphertext is not bound to the receiver's encapsulation key. A 2026-08 Verifpal symbolic analysis of the protocol (`docs/formal/`) independently found the corresponding weakness: sealed lattice keys can be replayed across sessions, because the sealed key carries no freshness or receiver binding. The planned mitigation — scheduled for a future protocol revision — is to include the receiver encapsulation-key fingerprint and the entity_id in the AEAD associated data of the sealed key, closing both findings.
 
 **Definition (TCONF game).** Transfer confidentiality is defined via an IND-CPA-style
 indistinguishability game adapted for LTP's commit-lattice-materialize structure:
@@ -1045,8 +1096,12 @@ guarantee for low-entropy entities committed to the public log.
 
 **Mitigation.** For low-entropy entities, use the ZK Transfer Mode (§3.2), which conceals
 entity_id from the public commitment log. When committed entities may be guessable or
-enumerable, the ZK mode MUST be used; relying on Theorem 5 in such settings provides
-no confidentiality guarantee.
+enumerable, ZK mode MUST be used — *except* in deployments with a quantum-adversary threat
+model, where ZK mode is prohibited (§3.2.4). In that intersection (guessable entities under
+a quantum-adversary threat model), implementations MUST either raise the entity's
+min-entropy — e.g., by including a random salt field in the entity envelope — or accept
+the documented EntityID-fingerprinting risk. Relying on Theorem 5 alone in such settings
+provides no confidentiality guarantee.
 
 #### 3.3.4 Commitment Non-Repudiation (EUF-CMA)
 
@@ -1100,7 +1155,7 @@ $$\Pr[M = e \mid \text{any } t < k \text{ shards}] = \Pr[M = e]$$
 The conditional distribution of $e$ given any $t < k$ observed shards is identical to its prior distribution. Equivalently, $\mathsf{Adv}^{\text{TSEC}}_{\mathcal{A}} = 0$.
 
 *Proof.* The Vandermonde encoding evaluates a degree-$(k-1)$ polynomial $p(x) = \sum_{j=0}^{k-1} c_j x^j$
-over GF(256) at $n$ distinct points. Any $t < k$ evaluations leave $k - t \geq 1$ degrees
+over GF(256) at $n$ distinct non-zero points ($\alpha_i = i + 1$ in the v1 parameter set). Any $t < k$ evaluations leave $k - t \geq 1$ degrees
 of freedom. Formally: for any set $T$ of $t < k$ evaluation points and any observed values
 at those points, exactly $256^{k-t}$ polynomials of degree at most $k - 1$ are consistent
 with those evaluations. Since the entity $e$ is the coefficient vector $(c_0, \ldots, c_{k-1})$
@@ -1121,7 +1176,7 @@ primary confidentiality guarantee against adversaries who may know or guess cand
 The MDS threshold secrecy property provides a second line of defense for the specific case
 where an adversary has obtained the CEK but controls fewer than $k$ commitment nodes.
 
-**Formal basis.** The threshold secrecy of ETP's erasure coding follows from the MDS (Maximum Distance Separable) property of Reed-Solomon codes over GF(2⁸), first connected to secret sharing by McEliece and Sarwate [1981]. Any k−1 shards leave exactly one degree of freedom in the polynomial coefficient space, revealing zero information about the entity content in the Shannon sense. This is information-theoretic security — it holds regardless of the adversary's computational power, including against quantum adversaries.
+**Formal basis.** The threshold secrecy of LTP's erasure coding follows from the MDS (Maximum Distance Separable) property of Reed-Solomon codes over GF(2⁸), first connected to secret sharing by McEliece and Sarwate [1981]. For a uniformly random (high-min-entropy) entity, any k−1 shards leave exactly one degree of freedom in the polynomial coefficient space, revealing zero information about the entity content in the Shannon sense. This information-theoretic guarantee holds regardless of the adversary's computational power, including against quantum adversaries — but, per the note above, only for content the adversary cannot guess or enumerate; for guessable content the deterministic encoding is trivially distinguishable and AEAD encryption (or ZK mode) is the operative protection.
 
 **In LTP's context:** Even if an adversary compromises $k - 1$ commitment nodes and decrypts
 the AEAD ciphertexts (by also obtaining the CEK) without prior knowledge of the entity,
@@ -1192,6 +1247,61 @@ while BLAKE3-256 provides ~85-bit post-quantum collision resistance (BHT bound) 
 | "Secure without trust" | Requires honest append-only log and ≥ k honest shard replicas. These ARE trust assumptions. | Acknowledged in §5.1 |
 | "Permanent storage" | Requires economic incentives to sustain nodes. Without incentives, rational nodes evict data. | Acknowledged in §5.4.4, §5.5 |
 
+#### 3.3.8 Machine-Checked Verification Status
+
+The theorems in this section are pen-and-paper reductions. Separately from
+them, two machine-checked artifacts exist in the reference repository as of
+2026-08-16. This subsection states exactly what they establish — and, in the
+spirit of §3.3.7, exactly what they do not.
+
+**Lean 4 proofs** (`formal/lean/`, CI-gated, `sorry`-free with a
+negative-tested axiom audit; 47 audited theorems). Machine-checked claims
+that correspond to statements made in this paper:
+
+| Paper claim | Lean theorem |
+|-------------|--------------|
+| The sealed lattice key is the same size for a 1 KB and a 1 TB entity (§2.2.2); ML-KEM-768 sealing stays within the ~1,300-byte envelope | `lattice_key_size_payload_independent`, `sealed_768_bounded` |
+| The commitment record cannot be smaller than its 3,309-byte ML-DSA-65 signature (§2.1.3) | `record_exceeds_1kb` |
+| ρ = nr/k = 6 at default parameters, and the §6.4 break-even is N ≥ ρ, not N ≥ r | `rho_default`, `breakeven_iff` |
+| Any k shards suffice, no shard index is privileged, and the k / k−1 reconstruction boundary is sharp (§4.3) | `no_index_privileged`, `at_threshold_decodable`, `below_threshold_undecodable` |
+| The §2.2.1 access-policy algebra: one-time keys exhaust, the mandated fail-closed mode never over-grants, and attenuation never amplifies authority (§8.4) | `one_time_exhausts`, `minimal_is_sound`, `attenuate_no_amplify` |
+| Two ≥ 2/3 governance supermajorities share an honest voter when < n/3 of operators are Byzantine (§5.1); the bound is tight at exactly n/3 | `supermajority_safety`, `safety_bound_tight` |
+| The corridor 7-of-9 attestation quorum: any two attestations share an honest signer with ≤ 4 Byzantine super-nodes | `corridor_safety` |
+
+These are proofs **about small models of the specification, not about the
+implementation**: the erasure theorems assume the MDS threshold shape rather
+than proving it over GF(2⁸); cryptographic soundness (ML-KEM IND-CCA2,
+ML-DSA EUF-CMA, BLS unforgeability) is assumed throughout; and nothing is
+extracted to, or mechanically linked with, `src/ltp/`. Read
+`formal/lean/README.md` § "What is NOT proved" before citing them.
+
+**Verifpal symbolic analysis** (`docs/formal/etp-protocol.vp`, Verifpal
+0.27.4, active Dolev-Yao attacker, unbounded sessions; first run recorded
+2026-08-16 in `docs/formal/verifpal-run-2026-08-16.md`):
+
+| Query | Verdict |
+|-------|---------|
+| `confidentiality? cek` | ✅ Verified |
+| `confidentiality? content` | ✅ Verified |
+| `authentication? commitment` | ❌ Fails — the signed record can be (re)delivered by the attacker; the signature holds, the delivery channel carries no authority |
+| `authentication? sealed_key` | ❌ Fails — **cross-session replay** of sealed lattice keys; nothing binds a sealed key to a session, freshness value, or the receiver's encapsulation key |
+
+The confidentiality verdicts are conditional on authentic identity-key
+distribution (modeled as a guarded pre-protocol exchange). The sealed-key
+replay finding independently corroborates the KEM ciphertext-binding gap
+disclosed in §3.3.2; the planned mitigation (receiver encapsulation-key
+fingerprint and entity_id in the sealed key's AEAD associated data, plus a
+freshness component) is recorded there and in `docs/formal/ANALYSIS.md`.
+Policy enforcement (`max_materializations`, §2.2.1) bounds the impact of a
+replayed key in the interim.
+
+Current status, per artifact class: symbolic confidentiality **verified
+under stated assumptions**; symbolic authentication **failing with known,
+disclosed findings and a planned fix**; specification arithmetic and
+threshold logic **machine-checked in Lean**; game-based reductions
+**pen-and-paper only** (a CryptoVerif/EasyCrypt treatment remains future
+work, per `docs/FORMAL_VERIFICATION_STATUS.md`).
+
 ---
 
 ## 4. Immutability Guarantees
@@ -1239,7 +1349,7 @@ A critical distinction that protocols often conflate:
 
 | Property | Guarantee | Condition |
 |----------|----------|-----------|
-| **Immutability** | If data is reconstructed, it is *exactly* what was committed | UNCONDITIONAL — content-addressing ensures any valid reconstruction is authentic. No mechanism exists to produce corrupted data with a valid EntityID. |
+| **Immutability** | If data is reconstructed, it is *exactly* what was committed | CONDITIONAL on an honest append-only log (§5.1.4); given log integrity, content-addressing makes any valid reconstruction authentic — no mechanism exists to produce corrupted data with a valid EntityID. |
 | **Availability** | Committed data *can* be reconstructed | CONDITIONAL — requires ≥ $k$ shard indices with ≥ 1 live replica each (see §5.4) |
 
 **Corollary (Immutability — informal restatement of Theorems 3 and 8, §3.3).** Let $E$ be an
@@ -1298,6 +1408,7 @@ A deployment begins with a genesis configuration:
 {
   "genesis_version": 1,
   "minimum_nodes": 6,
+  "reconstruction_threshold_k": 3,
   "minimum_regions": 3,
   "minimum_admin_domains": 2,
   "genesis_operators": [
@@ -1311,8 +1422,12 @@ A deployment begins with a genesis configuration:
 ```
 
 The genesis set must satisfy:
-- At least $2k$ nodes (where $k$ = minimum reconstruction threshold), ensuring no single
-  entity of $k$ nodes can reconstruct all shards even before considering encryption
+- At least $2k$ nodes (where $k$ = the deployment's minimum reconstruction threshold,
+  declared as `reconstruction_threshold_k` in the genesis configuration), ensuring no single
+  entity of $k$ nodes can reconstruct all shards even before considering encryption. The
+  example above declares a small bootstrap threshold $k = 3$, so `"minimum_nodes": 6`
+  satisfies the $2k$ constraint; a deployment using the document-default $k = 32$ requires
+  `"minimum_nodes"` ≥ 64
 - Nodes span $\geq 3$ geographic regions and $\geq 2$ administrative domains
 - Each genesis operator provides an ML-DSA-65 verification key as identity attestation
 
@@ -1356,9 +1471,9 @@ choice.
 > Implementers who need a default SHOULD use the CT-style Merkle log specified
 > in §5.1.4.2 below. It satisfies all three formal log assumptions with the weakest
 > trust requirement (at least 1 honest operator), uses only LTP's existing primitives
-> (BLAKE2b-256 + ML-DSA-65), and requires no consensus protocol.
+> (BLAKE3-256 + ML-DSA-65), and requires no consensus protocol.
 >
-> **Reference implementation:** `src/merkle_log/` in the LTP repository.
+> **Reference implementation:** `src/ltp/merkle_log/` in the LTP repository.
 > **Reference tests:** `tests/test_merkle_log.py` (42 tests demonstrating
 > tamper-evidence, O(log N) inclusion proofs, and equivocation detection).
 >
@@ -1394,7 +1509,7 @@ An implementation claiming to satisfy the CT-style Merkle log requirement MUST:
 | Requirement | Specification |
 |-------------|---------------|
 | **Tree hash** | Append-only binary Merkle tree; leaf nodes: `H(0x00 \|\| record)`, internal nodes: `H(0x01 \|\| left \|\| right)` — RFC 6962 §2.1 domain separation |
-| **Hash primitive** | BLAKE2b-256 — consistent with LTP's content-addressing primitive (§1.2) |
+| **Hash primitive** | BLAKE3-256 — consistent with LTP's default content-addressing primitive (§1.2) |
 | **Signed Tree Heads** | Each STH MUST be ML-DSA-65 signed over `sequence \|\| tree_size \|\| timestamp \|\| root_hash`; sequence MUST be monotonically increasing per operator |
 | **Inclusion proofs** | MUST produce O(log N) sibling-path proofs for any record; any verifier MUST be able to reconstruct the root from (record, proof, tree_size) without holding other records |
 | **Equivocation detection** | MUST treat two valid STHs from the same operator at the same sequence number with different root hashes as a self-contained equivocation proof requiring no further data |
@@ -1591,6 +1706,10 @@ maintain the replication factor $r$.
 
 The collusion question is: **what if $k$ or more nodes conspire to pool their shards and
 reconstruct an entity?**
+
+Terminology: "Option C" is the shard-level audit design adopted from the internal design
+review (`docs/security/audits/internal/001-lattice-key-shard-exposure.md`); "LTP v2" refers
+to the current protocol revision incorporating it.
 
 #### 5.3.1 Pre-Option-C (Broken)
 
@@ -1876,7 +1995,7 @@ Let:
 - $r$ = replication factor per shard (copies of each shard across independent nodes)
 - $\rho = nr/k$ = combined expansion factor (erasure coding expansion $n/k$ times replication $r$)
 - $N$ = number of receivers
-- $L_{SR}$ = latency between sender and receiver
+- $L_{SR}$ = one-way latency between sender and receiver (sealed lattice-key delivery)
 - $L_{RN}$ = latency between receiver and nearest commitment node
 - $L_{\log}$ = latency for commitment record lookup from the append-only log (step 2 of MATERIALIZE)
 
@@ -1916,7 +2035,7 @@ $D$ (local shard fetches) + ~1,300 bytes (sealed key). Sender bandwidth is const
 
 $$T_{direct} = L_{SR} + \frac{D}{\text{bandwidth}_{SR}}$$
 
-$$T_{LTP} = \underbrace{L_{RN} + \frac{1300}{\text{bandwidth}_{SR}} + L_{\log}}_{\text{key + record lookup (negligible)}} + \underbrace{\frac{D/k}{\alpha \cdot \text{bandwidth}_{RN}}}_{\text{k parallel shard fetches}}$$
+$$T_{LTP} = \underbrace{L_{SR} + \frac{1300}{\text{bandwidth}_{SR}} + L_{RN} + L_{\log}}_{\text{sealed-key delivery + record lookup (negligible)}} + \underbrace{\frac{D/k}{\alpha \cdot \text{bandwidth}_{RN}}}_{\text{k parallel shard fetches}}$$
 
 where $\alpha \in (0, 1]$ is a **parallelism efficiency factor** representing the fraction of
 theoretical parallel bandwidth actually achieved. The ideal case $\alpha = 1$ (full parallelism)
@@ -1928,8 +2047,10 @@ In practice $\alpha < 1$ due to:
 - **Node-side I/O scheduling**: If multiple receivers are fetching from the same commitment
   node simultaneously, node disk I/O contention degrades throughput.
 - **Receiver bandwidth cap**: If $k \cdot \text{bandwidth}_{RN} > \text{bandwidth}_{receiver}$,
-  the receiver's uplink becomes the bottleneck and the parallel advantage is bounded by
-  $\text{bandwidth}_{receiver} / (D/k)$, not by node bandwidth.
+  the receiver's downlink is the bottleneck: materialization time is
+  $D / \text{bandwidth}_{receiver}$, and the parallel speedup is capped at
+  $\text{bandwidth}_{receiver} / \text{bandwidth}_{RN}$ effective streams, not by node
+  bandwidth.
 - **Straggler effect**: $T_{LTP}$ is determined by the *slowest* of the $k$ shard fetches.
   Under load, tail latency can dominate.
 
@@ -1995,7 +2116,7 @@ contention), $T_{LTP} \approx T_{direct}$ but with the sender free to go offline
 | Sender→receiver path O(1) | No | No | No | No | No | **Yes** |
 | Capability-based access control | No | No | No | **Yes** | **Yes** | **Yes** |
 | Capability bound to receiver identity | No | No | No | No | No | **Yes (ML-KEM)** |
-| Forward secrecy (PQ) | TLS layer | No | No | No | No | **Yes (ML-KEM)** |
+| Forward secrecy (PQ) | TLS layer | No | No | No | No | **Yes (ML-KEM; ephemeral materialization)** |
 | PQ signatures on commitments | No | No | No | No | No | **Yes (ML-DSA)** |
 | ZK privacy mode | No | No | No | No | No | **Yes†** |
 | Survives sender going offline | No | If pinned | If seeded | **Yes** | **Yes** | **Yes** |
@@ -2025,13 +2146,13 @@ Concrete durability measurements from production systems, measured in "nines" (e
 
 | System | Parameters | Expansion Factor | Durability (10% churn) | Repair Bandwidth |
 |--------|-----------|:----------------:|:---------------------:|:----------------:|
-| **LTP** | k=4, n=8, r=3 | 2x (×3 replication) | 99.9999999% (theory, independent) | O(k) per shard |
+| **LTP** | k=4, n=8, r=3 | 6x (ρ = nr/k) | 99.9999999% (theory, independent) | O(k) per shard |
 | **Storj** | k=29, n=80 | 2.76x | 11 nines | ~55% of replication |
 | **Storj** | k=16, n=32 | 2x | Higher than 10x replication | — |
 | **Filecoin** | RS + PoRep | 3–10x | Cryptographic proof (PoSt) | Full sector re-seal |
 | **Tahoe-LAFS** | k=3, n=10 | 3.33x | Provider-independent | Full re-encode |
 
-Data sourced from Storj file redundancy documentation [storj.dev/learn/concepts/file-redundancy] and Filecoin specification. LTP's theoretical availability assumes independent node failures (§5.4.1); correlated failure model in §5.4.1.1 provides more conservative estimates.
+Data sourced from Storj file redundancy documentation [storj.dev/learn/concepts/file-redundancy] and Filecoin specification. Expansion factors in this table are **total storage expansion**: LTP's figure is $\rho = nr/k$ (erasure expansion $n/k$ × replication $r$, per §6.4), directly comparable to Storj's 2.76x total expansion. LTP's theoretical availability assumes independent node failures (§5.4.1); correlated failure model in §5.4.1.1 provides more conservative estimates.
 
 ---
 
@@ -2108,7 +2229,7 @@ permissionless blockchains — permissioned channels with endorsement policies c
 immutability with lower latency and without proof-of-work.
 
 **What LTP borrows:** The commitment log is a direct application of these ideas. The whitepaper
-deliberately does not specify a consensus mechanism (Section 10, Open Question 3) — it could be
+deliberately does not specify a consensus mechanism (Section 10, Resolved Questions) — it could be
 a blockchain, a CT-style Merkle log, or a permissioned ledger. The immutability guarantee
 (Section 4) relies only on the append-only property and hash chaining, not on a specific
 consensus protocol.
@@ -2250,6 +2371,20 @@ standards, China's CACR competition and Korea's KpqC may produce algorithms not 
 portfolio. LTP's cryptographic agility (configurable SecurityProfile, pluggable backends)
 is designed to accommodate regional algorithm requirements without protocol-level changes.
 
+**No hybrid PQ/classical KEM mode.** NIST and CRYPTREC currently recommend hybrid
+constructions (e.g., ML-KEM combined with X25519) during the post-quantum transition, as
+insurance against undiscovered weaknesses in the newer lattice assumptions. LTP v1 is
+PQ-only by design — there is no classical fallback, which removes the downgrade attack
+surface at the cost of forgoing the hybrid hedge. This is a deliberate trade-off. A hybrid
+profile is possible via the crypto-agility mechanism above and is future work.
+
+**Regulatory considerations.** Immutability can appear to conflict with deletion mandates
+(e.g., GDPR/CCPA erasure rights). LTP stores only encrypted shards; destroying the CEK and
+any outstanding lattice keys renders committed data permanently unreadable
+(crypto-shredding), which is the deployment-level deletion mechanism. A full
+multi-jurisdiction compliance matrix is future work, and this paper does not constitute a
+compliance claim.
+
 ### References
 
 [1] J. Benet, "IPFS — Content Addressed, Versioned, P2P File System," arXiv:1407.3561, 2014.
@@ -2343,40 +2478,45 @@ the grounded scenarios in §§9.1–9.4.*
 
 ## 10. Open Questions
 
-1. ~~**Commitment network economics**: How are commitment nodes incentivized to store and serve shards?~~
-   **Addressed in §5.5.** LTP defines economic interfaces (compensate, slash, pricing) without
-   mandating a specific mechanism. Deployment-dependent: organizational SLA, mutual obligation,
-   or token/staking (see §5.5 table).
-
-2. **Shard eviction**: When can shards be garbage collected? (Never? After TTL? After all authorized
+1. **Shard eviction**: When can shards be garbage collected? (Never? After TTL? After all authorized
    receivers materialize?) **Partially addressed in §5.4.4** — TTL-based eviction with renewal.
    Open: optimal TTL default, interaction between TTL expiry and in-flight lattice keys.
 
-3. ~~**Commitment log consensus**: What consensus mechanism secures the append-only log?~~
-   **Addressed in §5.1.2.** LTP does not require full BFT consensus. The commitment network is
-   a storage network; the log requires only append-only integrity and hash chaining. A Certificate
-   Transparency–style Merkle log with trusted operators is sufficient.
-
-4. **Bandwidth for initial shard distribution**: The commit phase still requires distributing n
+2. **Bandwidth for initial shard distribution**: The commit phase still requires distributing n
    shards. Can this be amortized or pipelined?
 
-5. **Real-time streaming**: Can LTP support continuous entity streams (video, telemetry), or is it
+3. **Real-time streaming**: Can LTP support continuous entity streams (video, telemetry), or is it
    inherently batch-oriented?
 
-6. **Audit protocol formalization**: The storage proof challenge-response (§5.2.2) is lightweight
+4. **Audit protocol formalization**: The storage proof challenge-response (§5.2.2) is lightweight
    but weaker than Filecoin's PoSt. A node that re-fetches data just before an audit passes
    dishonestly. Can time-bounded challenges be tightened without requiring SNARKs?
 
-7. **Cross-deployment federation**: How do independently bootstrapped LTP networks discover and
+5. **Cross-deployment federation**: How do independently bootstrapped LTP networks discover and
    trust each other's commitment nodes?
 
-8. **ZK Transfer Mode extensions**: §3.2 specifies a Groth16-based hiding commitment for
+6. **ZK Transfer Mode extensions**: §3.2 specifies a Groth16-based hiding commitment for
    entity_id privacy, but defers two significant capabilities: (a) content-property proofs —
    circuit composition for application-layer predicates (JSON schema, range proofs, etc.); and
    (b) post-quantum ZK — replacing the BLS12-381 pairing with a STARK or lattice-based proof
    system that resists Shor's algorithm. What is the appropriate circuit composition model for
    (a), and which post-quantum proof system best balances proof size, generation time, and
    absence of trusted setup for (b)?
+
+### Resolved questions
+
+The following questions from earlier drafts have been resolved and are retained here for
+the record:
+
+- ~~**Commitment network economics**: How are commitment nodes incentivized to store and serve shards?~~
+  **Addressed in §5.5.** LTP defines economic interfaces (compensate, slash, pricing) without
+  mandating a specific mechanism. Deployment-dependent: organizational SLA, mutual obligation,
+  or token/staking (see §5.5 table).
+
+- ~~**Commitment log consensus**: What consensus mechanism secures the append-only log?~~
+  **Addressed in §5.1.2.** LTP does not require full BFT consensus. The commitment network is
+  a storage network; the log requires only append-only integrity and hash chaining. A Certificate
+  Transparency–style Merkle log with trusted operators is sufficient.
 
 ---
 
@@ -2421,7 +2561,6 @@ Each receiver independently pulls the full payload from Earth. Total Earth uploa
   $n = 64$, $k = 32$, $r = 3$: total upload $= D \cdot nr/k = 1\text{ GB} \times 6 = 6\text{ GB}$.
   At 1 Mbps: $6\text{ GB} / 1\text{ Mbps} \approx 13.4\text{ hours}$ of Earth upload,
   paid once regardless of $N$.
-  paid once regardless of $N$.
 - *Lattice phase (per receiver):* ~1,300-byte sealed key transmitted in $< 1\text{ s}$ +
   20-minute light delay.
 - *Materialize phase (per receiver):* $1\text{ GB} / 1\text{ Gbps} = 8\text{ seconds}$
@@ -2448,8 +2587,18 @@ is less than direct's ($N \times 1\text{ GB}$). At $N = 10$: LTP saves $4\text{ 
 replication to Mars still traverses the 20-minute link. The advantage requires pre-populated
 Mars-local commitment nodes, which is an infrastructure deployment decision, not a protocol
 guarantee. The scenario is meaningful only when the commit cost is amortized across a
-sufficiently large receiver population (break-even: $N > r$).
+sufficiently large receiver population (break-even: $N > \rho$).
 
 ---
 
-*LTP v0.1.0-draft — Lattice Transfer Protocol*
+## Revision History
+
+| Version | Date | Summary |
+|---------|------|---------|
+| 0.1.0-draft | 2026-02-24 | Initial draft; reviewed by external review rounds 001–003 (formal + mathematical) and 004 (research landscape), `docs/security/audits/external/whitepaper-reviews/`. |
+| 0.1.0-draft (rev) | 2026-03-29 | Post-review corrections: test-vector arithmetic, BHT collision bound (~85-bit), cost-model expansion factor ρ = nr/k, nonce-derivation invariant, TCONF log binding, ZK-mode specification, theorem-numbering note. |
+| 0.2.0 | 2026-08-17 | Publication revision: threshold-secrecy claims conditioned per §3.3.5 throughout; erasure-coding spec re-baselined to the reference implementation (consecutive evaluation points, length-prefix framing) with regenerated test vectors — the evaluation points were re-baselined from the unimplemented powers-of-α scheme to the implemented consecutive-points scheme (α_i = i+1), test vectors regenerated from the reference implementation, superseding the §2.1.1 arithmetic checked in review rounds 001–002; the `encoding_params` `eval` label string is retained verbatim for record-hash compatibility; commitment-record size corrected; KEM-binding claim corrected to a disclosed limitation with planned mitigation; normative conflicts resolved (low-entropy × quantum threat model; extension registry created; log hash primitive unified on BLAKE3-256); disclosure paragraphs for deferred wire formats, hybrid KEM, regulatory posture, forward-secrecy caveats, key-rotation gap; machine-checked verification status section added (§3.3.8) covering the 47 Lean 4 theorems and the first recorded Verifpal run (2 confidentiality queries verified, 2 authentication replay findings disclosed with planned mitigation). |
+
+---
+
+*LTP v0.2.0 — Lattice Transfer Protocol*

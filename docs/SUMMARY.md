@@ -34,6 +34,7 @@
 ## Reference
 
 * [Python API Reference](api/README.md)
+* [LTP Extension Registry](extension-registry.md)
 
 ## Plans & Specs
 
@@ -57,6 +58,7 @@
 * [Security Review (2026-02-24)](security/audits/internal/SECURITY_REVIEW-2-24-2026.md)
 * [Shard Exposure Analysis](security/audits/internal/001-lattice-key-shard-exposure.md)
 * [Formal Protocol Analysis](formal/ANALYSIS.md)
+* [Verifpal Run (2026-08-16)](formal/verifpal-run-2026-08-16.md)
 * [Formal Verification Status](FORMAL_VERIFICATION_STATUS.md)
 
 ## Operations

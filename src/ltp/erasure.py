@@ -13,6 +13,13 @@ Whitepaper parameters (§2.1 / encoding_params):
   algorithm : "reed-solomon-gf256"
   gf_poly   : "0x11d"
   eval      : "vandermonde-powers-of-0x02"
+
+The "eval" value is a frozen historical label: encoding_params is hashed
+into signed commitment records, so the string cannot change without
+breaking record-hash compatibility. The evaluation points it denotes are
+α_i = i + 1 (consecutive, as implemented below and specified in
+whitepaper §2.1.1) — NOT powers of 0x02. Conformance is defined by
+§2.1.1, not by parsing the label.
 """
 
 from __future__ import annotations
@@ -109,6 +116,13 @@ class ErasureCoder:
         data_chunks = [padded[i * chunk_size : (i + 1) * chunk_size] for i in range(k)]
 
         # Fast path: zfec C backend
+        # CONFORMANCE GAP: zfec is a systematic code — its first k shares
+        # are the raw data chunks, which whitepaper §2.1.1 explicitly
+        # rules non-conformant, and its shard bytes (hence shard roots)
+        # differ from the pure-Python Vandermonde path below. Environments
+        # with and without zfec produce incompatible commitments for the
+        # same entity. Do not enable zfec in deployments that need
+        # cross-implementation shard determinism until this is resolved.
         if _zfec_available:
             encoder = _zfec_mod.Encoder(k, n)
             return encoder.encode(data_chunks)
