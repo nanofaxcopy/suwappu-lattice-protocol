@@ -1,15 +1,17 @@
 <div align="center">
 
-# Entanglement Transfer Protocol
+# Lattice Transfer Protocol (LTP)
 
 ## A Post-Quantum Cryptographic Data Transfer Protocol
 
 > *"Don't move the data. Transfer the proof. Reconstruct the truth."*
 
-[![Tests](https://img.shields.io/badge/tests-2,800+_passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-4,033_passing-brightgreen)]()
 [![Python](https://img.shields.io/badge/python-3.10+-blue)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
-[![Version](https://img.shields.io/badge/version-3.0.0-orange)]()
+[![SDK](https://img.shields.io/badge/SDK-3.0.0-orange)]()
+[![Whitepaper](https://img.shields.io/badge/whitepaper-0.2.0-informational)](docs/WHITEPAPER.md)
+[![Formal](https://img.shields.io/badge/Lean_4-52_theorems-9cf)](formal/lean/README.md)
 [![Post-Quantum](https://img.shields.io/badge/crypto-post--quantum-purple)]()
 [![Claude Code](https://img.shields.io/badge/Claude_Code-supported-blueviolet)](CLAUDE.md)
 [![Cursor](https://img.shields.io/badge/Cursor-supported-black)](.cursorrules)
@@ -17,6 +19,18 @@
 </div>
 
 ---
+
+> **Note on naming.** LTP was formerly called **ETP (Entanglement Transfer
+> Protocol)**. Some artifacts retain the old name for compatibility — notably
+> the Verifpal model `docs/formal/etp-protocol.vp` and the
+> `ETP_REQUIRE_REAL_CRYPTO` environment variable. The protocol, the package
+> (`ltp`), and the specification are LTP.
+>
+> **Two version numbers, deliberately.** The **SDK** (this repository, the
+> `ltp` Python package) is at 3.0.0. The **protocol specification**
+> ([whitepaper](docs/WHITEPAPER.md)) is at 0.2.0 — a public draft issued for
+> comment. They version independently; see
+> [`docs/STABILITY_PROMISES.md`](docs/STABILITY_PROMISES.md).
 
 ## Visuals
 
@@ -38,7 +52,7 @@ Point B.** This chains us to three unsolvable constraints:
 2. **Geography** -- further = slower, always
 3. **Compute** -- larger payloads demand more processing at both ends
 
-ETP rejects this assumption. Data transfer is not about moving bits. It is about
+LTP rejects this assumption. Data transfer is not about moving bits. It is about
 transferring the *ability to reconstruct* a deterministic output at a destination,
 verified by an immutable commitment.
 
@@ -201,7 +215,7 @@ flowchart TD
 ```mermaid
 flowchart BT
     L1["Layer 1: Information-Theoretic Security\nErasure coding (k-of-n threshold)\n< k shards reveal nothing"]
-    L2["Layer 2: Cryptographic Integrity\nBLAKE2b content addressing\nMerkle root + ML-DSA-65 signatures"]
+    L2["Layer 2: Cryptographic Integrity\nBLAKE3-256 content addressing\nMerkle root + ML-DSA-65 signatures"]
     L3["Layer 3: Zero-Knowledge (Optional)\nPedersen hiding commitments (BLS12-381)\nFRI-based STARK proofs (PQ-safe)"]
     L4["Layer 4: Shard Encryption\nAEAD with random 256-bit CEK\nPer-shard nonce derivation"]
     L5["Layer 5: Sealed Envelope\nML-KEM-768 encapsulation\nForward secrecy per transfer"]
@@ -213,6 +227,38 @@ flowchart BT
     L4 --> L5
     L5 --> L6
 ```
+
+## Formal Verification
+
+Two machine-checked artifacts, both gated in CI. What they establish — and
+what they do not — is stated in full in
+[`docs/FORMAL_VERIFICATION_STATUS.md`](docs/FORMAL_VERIFICATION_STATUS.md).
+
+**Lean 4** ([`formal/lean/`](formal/lean/README.md)) — 52 audited theorems, no
+`sorry`, no Mathlib dependency, negative-tested axiom audit. Covers the
+corridor 7-of-9 quorum (safety and liveness), the constant-size commitment and
+sealed-lattice-key invariants, the §6.4 bandwidth break-even, the k-of-n
+erasure threshold consequences, the access-policy algebra, 2/3-supermajority
+BFT bounds, and both whitepaper interoperability test vectors recomputed
+inside the proof kernel over a from-scratch GF(2⁸).
+
+**Verifpal** ([`docs/formal/`](docs/formal/ANALYSIS.md)) — symbolic analysis
+under an active Dolev-Yao attacker, first run recorded 2026-08-16:
+
+| Query | Result |
+|---|---|
+| `confidentiality? cek` | ✅ Verified |
+| `confidentiality? content` | ✅ Verified |
+| `authentication? commitment` | ❌ Fails — delivery of the (public, self-authenticating) record is unauthenticated |
+| `authentication? sealed_key` | ❌ Fails — **cross-session replay**; no freshness or receiver binding |
+
+The sealed-key replay finding is real, disclosed rather than deferred, and
+corroborates a KEM ciphertext-binding gap the whitepaper documents in §3.3
+(ML-KEM is not MAL-BIND-K-CT, so this must be closed at the protocol layer).
+The planned fix — binding the receiver encapsulation-key fingerprint and
+entity_id into the sealed key's AEAD associated data — is tracked in
+[`docs/plans/2026-08-16-research-round.md`](docs/plans/2026-08-16-research-round.md).
+Reproduction instructions for both artifacts are in their respective READMEs.
 
 ## Smart Contracts
 
@@ -252,8 +298,8 @@ v6 (Apr 14)   Base Sepolia L2 deployment   Bidirectional bridge
 
 ```bash
 # Clone and install
-git clone https://github.com/Suwappu-Labs/Entanglement-Transfer-Protocol.git
-cd Entanglement-Transfer-Protocol
+git clone https://github.com/Suwappu-Labs/suwappu-lattice-protocol.git
+cd suwappu-lattice-protocol
 pip install -e ".[dev]"
 
 # Run the demo
@@ -269,7 +315,7 @@ cd contracts && forge test -vvv
 ## Project Structure
 
 ```
-Entanglement-Transfer-Protocol/
+suwappu-lattice-protocol/
 ├── src/ltp/                    # Core protocol library (60+ modules)
 │   ├── protocol.py             # Three-phase COMMIT/LATTICE/MATERIALIZE
 │   ├── primitives.py           # ML-KEM-768, ML-DSA-65, AEAD, hashing
@@ -311,7 +357,8 @@ Entanglement-Transfer-Protocol/
 │       ├── DeployMainnet.s.sol        # Production deployment (configurable)
 │       └── UpgradeV4.s.sol            # Governance-controlled UUPS upgrade
 │
-├── tests/                      # 2,600+ Python tests across 114 files
+├── formal/lean/                # Lean 4 machine-checked proofs (52 theorems)
+├── tests/                      # 4,033 Python tests across 247 files
 ├── docs/                       # Protocol documentation
 │   ├── WHITEPAPER.md           # Full protocol specification
 │   └── ...                     # See docs/README.md for index
@@ -328,7 +375,9 @@ See [docs/README.md](docs/README.md) for the full documentation index.
 
 | Document | Description |
 |----------|-------------|
-| [Whitepaper](docs/WHITEPAPER.md) | Full protocol specification |
+| [Whitepaper](docs/WHITEPAPER.md) | Full protocol specification (v0.2.0, public draft for comment) |
+| [Formal Verification Status](docs/FORMAL_VERIFICATION_STATUS.md) | What is machine-checked, what is paper-proven, what is neither |
+| [Extension Registry](docs/extension-registry.md) | Registered `x-ltp/` shape types |
 | [Architecture](docs/design-decisions/ARCHITECTURE.md) | System components and data flow |
 | [Visuals](docs/visuals/README.md) | Inline-Mermaid diagrams (LTP, SUWAPPU DAG, SUWAPPU-DB, anchor lifecycle, trust boundary, DKG) |
 | [SUWAPPU DAG and SUWAPPU-DB Integration](docs/design-decisions/SUWAPPU_DAG_DB_INTEGRATION.md) | Cross-repo boundary with the DAG L1 and state substrate |
@@ -342,8 +391,9 @@ See [docs/README.md](docs/README.md) for the full documentation index.
 
 | Category | Count |
 |----------|-------|
-| Python tests | 2,600+ |
-| Solidity tests | 188 |
+| Python tests | 4,033 |
+| Solidity test/invariant functions | 339 |
+| Lean 4 theorems (machine-checked, `sorry`-free) | 52 |
 | ZK proof tests (EC + STARK) | 59 |
 | Adversarial/attack tests | 56 |
 | Security audit tests | 24 findings verified |
@@ -354,7 +404,7 @@ See [docs/README.md](docs/README.md) for the full documentation index.
 | Contract integration (anvil) | 17 tests |
 | Fuzz runs (per test) | 256 iterations |
 | Invariant tests | 256 runs x 3,840 calls each |
-| **Total** | **2,800+** |
+| **Total (Python + Solidity)** | **4,372** |
 
 ```bash
 # Run Python tests
@@ -367,7 +417,9 @@ cd contracts && forge test -vvv
 
 ## Key Properties
 
-- **Constant-bandwidth sealed keys:** ~1,400 bytes O(1), independent of payload size
+- **Constant-bandwidth sealed keys:** 1,220–1,250 bytes with ML-KEM-768, O(1) and
+  independent of payload size — machine-checked in Lean
+  (`lattice_key_size_payload_independent`, `sealed_768_bounded`)
 - **FIPS-compliant settlement:** SHA3-256 canonical hashing on all on-chain paths
 - **No simulations:** Real PQC mandatory at import via `assert_real_crypto()`; real FRI-based STARK; real Wesolowski VDF
 - **Python↔Solidity parity:** Identical accept/reject for all validation rules

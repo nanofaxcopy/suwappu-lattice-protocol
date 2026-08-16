@@ -75,6 +75,10 @@ contracts-secaudit:
 docs:
     make docs-api
 
+# Typeset the whitepaper PDF (preprint / ePrint submission artifact)
+whitepaper:
+    make docs-whitepaper
+
 # --- Infrastructure (infra/terraform/) ------------------------------------
 
 # Format every .tf file in infra/terraform/
