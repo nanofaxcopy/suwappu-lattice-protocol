@@ -1,4 +1,4 @@
-// Entanglement Transfer Protocol (ETP) — Formal Protocol Model
+// Entanglement Transfer Protocol (ETP, now LTP) — Formal Protocol Model
 // Verifpal analysis of the 3-phase COMMIT / LATTICE / MATERIALIZE protocol
 //
 // Models an active attacker with unbounded sessions.
@@ -7,6 +7,27 @@
 //
 // Author: Suwappu-Labs
 // Date: 2026-03-29
+// Revised: 2026-08-16 — first actual verification run (Verifpal 0.27.4).
+//
+// The 2026-03-29 model was written but never run; it did not pass
+// Verifpal's model checks. Changes made to obtain a runnable model,
+// preserving the original's protocol intent (each is a modeling fix,
+// not a protocol change — see ANALYSIS.md for the full discussion):
+//
+//   1. The Phase 1 message resent sender_vk, which Verifpal rejects
+//      ("receiving constant despite already knowing it"). Dropped.
+//   2. The pre-protocol identity-key exchange is now guarded ([...]):
+//      identity keys are distributed authentically (key directory /
+//      out-of-band verification), which is what ANALYSIS.md's
+//      interpretation ("only the intended receiver") already assumed.
+//      Unguarded, the unauthenticated DH exchange is trivially
+//      MITM-able and every query fails for that uninteresting reason.
+//   3. The Receiver used cek, entity_nonce, and encrypted_shards it had
+//      never received. The commitment publication now carries
+//      encrypted_shards and entity_nonce (both public: commitment nodes
+//      are untrusted for confidentiality, and AEAD nonces are public),
+//      and the Receiver recovers the CEK from the unsealed lattice
+//      payload via SPLIT instead of using the Sender's secret directly.
 
 attacker[active]
 
@@ -23,9 +44,10 @@ principal Receiver[
 	receiver_ek = G^receiver_sk
 ]
 
-// Public key exchange (pre-protocol)
-Sender -> Receiver: sender_vk
-Receiver -> Sender: receiver_ek
+// Public key exchange (pre-protocol). Guarded: identity keys are
+// distributed authentically (key directory), per ANALYSIS.md.
+Sender -> Receiver: [sender_vk]
+Receiver -> Sender: [receiver_ek]
 
 // === Phase 1: COMMIT ===
 // Sender erasure-codes content, encrypts shards with CEK,
@@ -43,8 +65,10 @@ principal Sender[
 	commitment = SIGN(sender_sk, HASH(CONCAT(entity_id, shard_root)))
 ]
 
-// Commitment is published (nodes store encrypted shards)
-Sender -> Receiver: entity_id, shard_root, commitment, sender_vk
+// Commitment is published (nodes store encrypted shards). The encrypted
+// shards and the AEAD nonce are public: commitment nodes are untrusted
+// for confidentiality, so the attacker sees both.
+Sender -> Receiver: entity_id, shard_root, commitment, encrypted_shards, entity_nonce
 
 // === Phase 2: LATTICE ===
 // Sender seals CEK + entity_id to receiver via KEM (modeled as DH)
@@ -70,11 +94,14 @@ principal Receiver[
 	// Unseal the lattice key
 	lattice_payload_r = AEAD_DEC(shared_secret_r, sealed_key, entity_nonce)?
 
+	// Recover the CEK and entity id from the lattice payload
+	cek_r, entity_id_r = SPLIT(lattice_payload_r)?
+
 	// Verify commitment signature
 	commitment_valid = SIGNVERIF(sender_vk, HASH(CONCAT(entity_id, shard_root)), commitment)?
 
 	// Decrypt shards with CEK (extracted from lattice payload)
-	reconstructed = AEAD_DEC(cek, encrypted_shards, entity_nonce)?
+	reconstructed = AEAD_DEC(cek_r, encrypted_shards, entity_nonce)?
 ]
 
 // === Security Queries ===

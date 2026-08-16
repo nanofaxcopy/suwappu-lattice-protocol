@@ -1,6 +1,7 @@
 # LTP Lean proofs
 
-Machine-checked proofs about the LTP corridor bridge, in Lean 4.
+Machine-checked proofs about the LTP corridor bridge and the whitepaper's
+arithmetic claims, in Lean 4.
 
 ```bash
 formal/lean/verify.sh        # build + hole scan + axiom audit
@@ -21,6 +22,19 @@ strength. A cold `lake build` takes seconds.
 | `corridor_liveness` | `Ltp/Quorum.lean` | With ≤ 2 unavailable super-nodes, a quorum is still formable |
 | `commitment_size_payload_independent` | `Ltp/Commitment.lean` | The on-chain commitment size does not depend on the payload (Paper §10.2 / DAG Invariant 3) |
 | `strict_total_unsatisfiable` | `Ltp/Commitment.lean` | No valid envelope totals the pinned 1,600 B — see below |
+| `lattice_key_size_payload_independent` | `Ltp/LatticeKey.lean` | The sealed lattice key is the same size for a 1 KB and a 1 TB entity — the whitepaper's O(1) sender→receiver claim (Paper §2.2, §3.3.7) |
+| `sealed_768_min` / `sealed_768_max` / `sealed_768_bounded` | `Ltp/LatticeKey.lean` | The ML-KEM-768 sealed key is 1,220–1,250 B for the specified policy range, within the advertised ~1,300 B |
+| `record_exceeds_1kb` | `Ltp/LatticeKey.lean` | A record carrying an ML-DSA-65 signature (3,309 B, FIPS 204) can never be "< 1 KB" — pins the corrected §2.1.3 size claim |
+| `rho_default` / `breakeven_iff` | `Ltp/Bandwidth.lean` | ρ = n·r/k = 6 at defaults, and B_LTP ≤ 2·B_direct ⟺ N ≥ ρ — the §6.4 break-even where math review 001 found a critical error |
+| `commit_overhead_constant` | `Ltp/Bandwidth.lean` | The commit cost D·ρ is paid once, independent of receiver count |
+| `no_index_privileged` / `at_threshold_decodable` / `below_threshold_undecodable` | `Ltp/Erasure.lean` | Any k shards suffice, no index is privileged, and the k / k−1 failure boundary is sharp (Paper §4.3) — derived from the MDS threshold shape, which is assumed (see the file header) |
+| `loss_budget` / `decodable_monotone` | `Ltp/Erasure.lean` | Losing up to n−k shards is survivable; losing shards never helps |
+| `permits_antitone_count` / `one_time_exhausts` | `Ltp/Policy.lean` | The §2.2.1 access-policy count check cannot wedge, and one-time keys are one-time |
+| `minimal_is_sound` | `Ltp/Policy.lean` | The mandated fail-closed mode ("reject any policy other than unrestricted") never over-grants |
+| `attenuate_no_amplify` | `Ltp/Policy.lean` | Macaroon-style attenuation never grants what the parent policy denies (the §8.4 capability claim) |
+| `supermajority_safety` / `supermajority_liveness` | `Ltp/Governance.lean` | Classical BFT bounds for §5.1 governance: two 2/3 supermajorities share an honest voter when < n/3 are Byzantine; < n/3 unavailable still leaves a supermajority |
+| `safety_bound_tight` | `Ltp/Governance.lean` | Concrete counterexample at exactly n/3 Byzantine — the hypothesis cannot be weakened to ≤ |
+| `vector1_matches` / `vector2_matches` / `vector2_framing` | `Ltp/TestVectors.lean` | Both §2.1.1 interoperability test vectors recomputed in-kernel over a from-scratch GF(2⁸) (0x11D) and `decide`d byte-for-byte — the paper, the Lean kernel, and `src/ltp/erasure.py` are three independent computations agreeing on the same constants |
 
 Plus the generic forms (`quorum_intersection_general`) so the results are
 not specific to 7-of-9, and the counting lemmas they rest on.
@@ -76,6 +90,14 @@ with, the running code. Specifically out of scope:
   model here at all.
 - **Everything the symbolic model covers** — confidentiality,
   authentication, the Dolev-Yao attacker. Different tool, different file.
+- **The MDS property itself.** `Ltp/Erasure.lean` derives the paper's
+  operational claims *from* the k-of-n threshold shape; that the
+  GF(2⁸) Vandermonde code actually has that shape is assumed there
+  (hypothesis `hmds`), evidenced by `tests/test_erasure.py` and external
+  math review 002 — not proved in Lean.
+- **Policy enforcement in the SDK.** `Ltp/Policy.lean` proves the
+  *algebra* is sound; whether `src/ltp/` implements `permits` is a
+  code-review question.
 
 The honest summary: this converts the corridor's quorum arithmetic and
 commitment-size invariant from prose claims into machine-checked ones. It
@@ -91,6 +113,12 @@ formal/lean/
   Ltp/Counting.lean    countP lemmas, proved from core
   Ltp/Quorum.lean      corridor quorum safety + liveness
   Ltp/Commitment.lean  constant-size commitment
+  Ltp/LatticeKey.lean  constant-size sealed lattice key + record size
+  Ltp/Bandwidth.lean   §6.4 cost model and break-even
+  Ltp/Erasure.lean     k-of-n reconstruction threshold consequences
+  Ltp/Policy.lean      access-policy algebra (attenuation, fail-closed)
+  Ltp/Governance.lean  2/3-supermajority BFT bounds
+  Ltp/TestVectors.lean §2.1.1 test vectors recomputed over GF(2⁸)
   Ltp/Audit.lean       #print axioms for every headline theorem
   verify.sh            build + hole scan + axiom audit
 ```

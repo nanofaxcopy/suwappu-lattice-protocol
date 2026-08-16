@@ -13,10 +13,18 @@ Whitepaper parameters (§2.1 / encoding_params):
   algorithm : "reed-solomon-gf256"
   gf_poly   : "0x11d"
   eval      : "vandermonde-powers-of-0x02"
+
+The "eval" value is a frozen historical label: encoding_params is hashed
+into signed commitment records, so the string cannot change without
+breaking record-hash compatibility. The evaluation points it denotes are
+α_i = i + 1 (consecutive, as implemented below and specified in
+whitepaper §2.1.1) — NOT powers of 0x02. Conformance is defined by
+§2.1.1, not by parsing the label.
 """
 
 from __future__ import annotations
 
+import os
 import struct
 
 _zfec_available = False
@@ -28,6 +36,20 @@ except ImportError:
     _zfec_mod = None
 
 __all__ = ["ErasureCoder"]
+
+
+def _use_zfec() -> bool:
+    """Whether the zfec fast path is active.
+
+    zfec is a *systematic* code — its first k shares are the raw data
+    chunks, which whitepaper §2.1.1 explicitly rules non-conformant, and
+    its shard bytes (hence shard roots) differ from the conformant
+    Vandermonde path. It is therefore opt-in only: set
+    LTP_ERASURE_BACKEND=zfec to accept non-conformant, environment-local
+    shards in exchange for C-speed encoding. Never enable it where
+    cross-implementation shard determinism matters (commitment roots).
+    """
+    return _zfec_available and os.environ.get("LTP_ERASURE_BACKEND") == "zfec"
 
 
 class ErasureCoder:
@@ -42,8 +64,11 @@ class ErasureCoder:
       Encode/decode are O(n * k * chunk_size) pure-Python loops over GF(256).
       For a 100 KB payload with n=8, k=4: ~800K GF multiplications per encode.
       This is acceptable for testing and small payloads but will bottleneck at
-      scale.  Production should swap in an optimized backend (zfec, liberasurecode,
-      or Intel ISA-L) behind the same encode/decode API.
+      scale.  A production-grade fast backend must reproduce the §2.1.1
+      non-systematic Vandermonde shards byte-for-byte (an optimized GF(2⁸)
+      kernel, e.g. Intel ISA-L, driven by the same matrix); zfec does NOT —
+      it is systematic — and is therefore opt-in only via
+      LTP_ERASURE_BACKEND=zfec (see _use_zfec).
     """
 
     _GF_EXP = [0] * 512
@@ -99,8 +124,10 @@ class ErasureCoder:
         """
         if not (n > k > 0):
             raise ValueError("Need n > k > 0")
-        if n > 256:
-            raise ValueError("GF(256) supports at most 256 evaluation points")
+        if n > 255:
+            # Evaluation points are α_i = i + 1; GF(256) has only 255
+            # distinct non-zero elements, so n = 256 has no valid point.
+            raise ValueError("GF(256) supports at most 255 evaluation points")
 
         length_prefix = struct.pack(">Q", len(data))
         prefixed = length_prefix + data
@@ -108,8 +135,9 @@ class ErasureCoder:
         chunk_size = len(padded) // k
         data_chunks = [padded[i * chunk_size : (i + 1) * chunk_size] for i in range(k)]
 
-        # Fast path: zfec C backend
-        if _zfec_available:
+        # Optional zfec C backend — opt-in only (LTP_ERASURE_BACKEND=zfec),
+        # because it is systematic and non-conformant; see _use_zfec().
+        if _use_zfec():
             encoder = _zfec_mod.Encoder(k, n)
             return encoder.encode(data_chunks)
 
@@ -192,8 +220,9 @@ class ErasureCoder:
         indices = sorted(shards.keys())[:k]
         chunk_size = len(shards[indices[0]])
 
-        # Fast path: zfec C backend
-        if _zfec_available:
+        # Optional zfec C backend — must mirror encode()'s dispatch, since
+        # zfec shards and Vandermonde shards are mutually undecodable.
+        if _use_zfec():
             decoder = _zfec_mod.Decoder(k, n)
             share_data = [shards[idx] for idx in indices]
             decoded_chunks = decoder.decode(share_data, indices)

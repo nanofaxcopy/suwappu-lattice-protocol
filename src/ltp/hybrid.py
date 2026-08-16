@@ -166,8 +166,7 @@ def generate_composite_keypair() -> tuple[bytes, bytes]:
     """
     if not _pynacl_available:
         raise RuntimeError(
-            "generate_composite_keypair requires pynacl "
-            "(pip install 'ltp[crypto]' or 'ltp[dev]')."
+            "generate_composite_keypair requires pynacl (pip install 'ltp[crypto]' or 'ltp[dev]')."
         )
     from nacl.bindings import crypto_sign_keypair
 

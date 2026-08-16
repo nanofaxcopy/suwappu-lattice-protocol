@@ -6,14 +6,19 @@ What's verified, by what tool, and what's not — for outside cryptographic revi
 
 | Artifact | Tool | Status |
 |---|---|---|
-| [`ANALYSIS.md`](formal/ANALYSIS.md) | (overview doc) | Methodology, attacker model, cryptographic abstractions, query list |
-| [`etp-protocol.vp`](formal/etp-protocol.vp) | Verifpal v0.27+ | Symbolic model of the 3-phase COMMIT / LATTICE / MATERIALIZE protocol. **Written but never run** — see below. |
-| [`../formal/lean/`](../formal/lean/) | Lean 4 (core, no Mathlib) | **Machine-checked.** Corridor 7-of-9 quorum safety + liveness, and the constant-size commitment invariant. Gated in CI by `.github/workflows/formal.yml`. |
+| [`ANALYSIS.md`](formal/ANALYSIS.md) | (overview doc) | Methodology, attacker model, cryptographic abstractions, query list, **and recorded results as of 2026-08-16** |
+| [`etp-protocol.vp`](formal/etp-protocol.vp) | Verifpal v0.27.4 | Symbolic model of the 3-phase COMMIT / LATTICE / MATERIALIZE protocol. **Run 2026-08-16**: 2 of 4 queries verified, 2 replay findings — see below. |
+| [`verifpal-run-2026-08-16.md`](formal/verifpal-run-2026-08-16.md) | Verifpal v0.27.4 | Recorded output of the first verification run |
+| [`../formal/lean/`](../formal/lean/) | Lean 4 (core, no Mathlib) | **Machine-checked.** Corridor 7-of-9 quorum safety + liveness, constant-size commitment **and sealed-lattice-key** invariants, §6.4 bandwidth break-even, erasure k-of-n threshold consequences, access-policy algebra, 2/3-supermajority BFT bounds, and both §2.1.1 test vectors recomputed in-kernel over GF(2⁸). 52 audited theorems. Gated in CI by `.github/workflows/formal.yml`. |
 
 ## Machine-checked (Lean 4)
 
 Added 2026-08-15 to cover the threshold-quorum gap this document itself
-identified as out of reach for Verifpal. Run `formal/lean/verify.sh`.
+identified as out of reach for Verifpal; extended 2026-08-16 to the
+whitepaper's arithmetic claims (sealed-key size, bandwidth break-even,
+erasure threshold, policy algebra, governance supermajority) as part of
+the publication pass. Run `formal/lean/verify.sh`. Headline theorems
+(full table in [`../formal/lean/README.md`](../formal/lean/README.md)):
 
 | Theorem | Claim |
 |---|---|
@@ -22,6 +27,12 @@ identified as out of reach for Verifpal. Run `formal/lean/verify.sh`.
 | `corridor_liveness` | With ≤ 2 unavailable super-nodes a quorum is still formable; note the asymmetry (safety tolerates 4, liveness only 2) |
 | `commitment_size_payload_independent` | On-chain commitment size is independent of payload — the operative content of Paper §10.2 |
 | `strict_total_unsatisfiable` | No valid envelope totals the pinned `ON_CHAIN_COMMITMENT_BYTES = 1_600`; ML-KEM-768 gives 1,216 and ML-KEM-1024 gives 1,696 |
+| `lattice_key_size_payload_independent` | The sealed lattice key is the same size whatever entity it unlocks — the whitepaper's O(1) sender→receiver claim, machine-checked (added 2026-08-16) |
+| `sealed_768_bounded` / `record_exceeds_1kb` | ML-KEM-768 sealed key stays ≤ 1,300 B; a record with an ML-DSA-65 signature can never be "< 1 KB" |
+| `rho_default` / `breakeven_iff` | ρ = n·r/k = 6 at defaults and the §6.4 break-even N ≥ ρ — the arithmetic where math review 001 found a critical error |
+| `no_index_privileged` / `at_threshold_decodable` / `below_threshold_undecodable` | Paper §4.3's sharp k-of-n boundary and "no shard index privileged", derived from the assumed MDS threshold shape |
+| `permits_antitone_count` / `one_time_exhausts` / `minimal_is_sound` / `attenuate_no_amplify` | §2.2.1 access-policy algebra: count checks can't wedge, one-time is one-time, the mandated fail-closed mode never over-grants, attenuation never amplifies |
+| `supermajority_safety` / `supermajority_liveness` | §5.1 governance BFT bounds (2/3 supermajority, < n/3 Byzantine), with a tightness counterexample at exactly n/3 |
 
 The proofs use no `sorry` (CI enforces this via an axiom audit, and the
 gate is negative-tested). **They are proofs about a model, not about
@@ -30,26 +41,30 @@ extracted to the running code. Read
 [`formal/lean/README.md`](../formal/lean/README.md#what-is-not-proved--read-this-before-citing-these-results)
 before citing them.
 
-## ⚠️ The Verifpal model has never actually been run
+## The Verifpal model was first run on 2026-08-16
 
-The line below has said "pending the next release-engineering pass" since
-this document was written. Treat every Verifpal row in this file as
-**claimed, not established**, until someone runs it and records the
-output. This is tracked as a gap rather than quietly presented as
-verification.
+Until 2026-08-16 this section warned that the model had been **written
+but never run**. It has now been run (Verifpal 0.27.4, built from
+source; the model needed corrections to pass Verifpal's model checks at
+all — change log at the top of `etp-protocol.vp`). Results, with the
+attacker as the standard Dolev-Yao active adversary (unbounded sessions,
+fresh values, full message-modification capability):
 
-## What is verified symbolically
-
-The `etp-protocol.vp` model has been written but the official verification run is pending the next release-engineering pass. The queries it asserts (per `ANALYSIS.md`) are:
-
-| Property | Verifpal query | Expected outcome |
+| Property | Verifpal query | Outcome |
 |---|---|---|
-| CEK confidentiality | `confidentiality? cek` | Attacker cannot learn the content encryption key |
-| Content confidentiality | `confidentiality? content` | Attacker cannot learn the plaintext content |
-| Commitment authentication | `authentication? Sender -> Receiver: commitment` | Commitment record is bound to the sender's ML-DSA-65 key |
-| Sealed key authentication | `authentication? Sender -> Receiver: sealed_key` | Lattice key is bound to the sender's identity |
+| CEK confidentiality | `confidentiality? cek` | ✅ **Verified** |
+| Content confidentiality | `confidentiality? content` | ✅ **Verified** |
+| Commitment authentication | `authentication? Sender -> Receiver: commitment` | ❌ Fails — attacker can (re)deliver the signed record; delivery is unauthenticated (the signature itself holds) |
+| Sealed key authentication | `authentication? Sender -> Receiver: sealed_key` | ❌ Fails — **cross-session replay**: no freshness or receiver binding on the sealed key |
 
-The attacker is the standard Dolev-Yao active adversary (unbounded sessions, fresh values, full message-modification capability).
+The confidentiality results are conditional on authentic identity-key
+distribution (the model guards the pre-protocol key exchange — the same
+assumption `ANALYSIS.md` always made in prose). The sealed-key replay
+finding corroborates the KEM ciphertext-binding gap disclosed in
+whitepaper §3.3; the planned mitigation (receiver-key fingerprint +
+entity_id in the sealed key's AEAD associated data) is recorded in
+[`formal/ANALYSIS.md`](formal/ANALYSIS.md) and the whitepaper. Full
+traces: [`formal/verifpal-run-2026-08-16.md`](formal/verifpal-run-2026-08-16.md).
 
 ## What is NOT in scope of the symbolic model
 
@@ -78,21 +93,28 @@ The following adjacent reviews have already been published:
 ## How to run the symbolic verification yourself
 
 ```bash
-# install Verifpal (Go-based)
-brew install verifpal
-# or: go install github.com/symbolicsoft/verifpal@latest
+# Verifpal 0.27.4 — the last Go release. The Rust 1.0 rewrite changed
+# the model syntax (PUBKEY/DH_KEX instead of G^), so build the tag the
+# model targets. `go install` of the bare module path no longer works.
+git clone --branch v0.27.4 https://github.com/symbolicsoft/verifpal
+cd verifpal && go build -o verifpal ./cmd/verifpal
 
 # run from the repo root
-verifpal verify docs/formal/etp-protocol.vp
+./verifpal verify docs/formal/etp-protocol.vp
 ```
 
-The expected output is one line per query with a `verified` or `attack` verdict. Open an issue with the `verifpal-output` label if you see anything other than `verified` so we can update the documented status.
+Expected output as of 2026-08-16: both confidentiality queries pass
+(absent from the failed-query summary); both authentication queries fail
+with the replay traces recorded in
+[`formal/verifpal-run-2026-08-16.md`](formal/verifpal-run-2026-08-16.md).
+Open an issue with the `verifpal-output` label if you see anything
+*different from that*, so we can update the documented status.
 
 ## What would strengthen the case
 
 Items the maintainers know are missing and welcome contributions on:
 
-- Running the Verifpal model and recording the output (see the warning above — this is the cheapest outstanding item)
+- ~~Running the Verifpal model and recording the output~~ — done 2026-08-16; the next cheapest item is now re-running it once the sealed-key AAD binding lands, to confirm the replay finding closes
 - ~~A **Tamarin** or **ProVerif** model of the corridor 7-of-9 BLS attestation flow~~ — the *quorum* half of this is now covered by the Lean proofs above. A symbolic model is still wanted for the parts Lean does not touch: aggregate-signature unforgeability under a Dolev-Yao attacker, and the PoP exchange (LTP-A-015)
 - A **Certora** prover spec for `LTPAnchorRegistry.sol` covering sequence monotonicity, entity-signer binding, and the UUPS upgrade-admin gate
 - A **`hypothesis`**-based fuzz harness for `src/ltp/corridor/wire.py` deserialization (one shipped in PR #8 as `tests/test_corridor_wire_validation.py` but it's table-driven; property-based would catch more edge cases)

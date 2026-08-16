@@ -34,6 +34,7 @@
 ## Reference
 
 * [Python API Reference](api/README.md)
+* [LTP Extension Registry](extension-registry.md)
 
 ## Plans & Specs
 
@@ -45,6 +46,7 @@
 * [Threshold BLS Signing Spec](plans/2026-05-11-threshold-bls-signing-spec.md)
 * [Threshold BLS Signing Plan](plans/2026-05-12-threshold-bls-signing-plan.md)
 * [Gate 5 + Gate 6 Closure (2026-05-15)](plans/2026-05-15-gate-5-6-closure.md)
+* [Research Round (2026-08-16)](plans/2026-08-16-research-round.md)
 
 ## Security
 
@@ -57,6 +59,7 @@
 * [Security Review (2026-02-24)](security/audits/internal/SECURITY_REVIEW-2-24-2026.md)
 * [Shard Exposure Analysis](security/audits/internal/001-lattice-key-shard-exposure.md)
 * [Formal Protocol Analysis](formal/ANALYSIS.md)
+* [Verifpal Run (2026-08-16)](formal/verifpal-run-2026-08-16.md)
 * [Formal Verification Status](FORMAL_VERIFICATION_STATUS.md)
 
 ## Operations

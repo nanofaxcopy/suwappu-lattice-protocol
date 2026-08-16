@@ -33,7 +33,7 @@ adversarial threat model that drives the implementation choices.
 
 - **Shard exposure attack analysis** →
   [security/audits/internal/001-lattice-key-shard-exposure.md](../security/audits/internal/001-lattice-key-shard-exposure.md)
-- **Formal protocol analysis (Tamarin / ProVerif outputs)** →
+- **Formal protocol analysis (Verifpal symbolic model + recorded run)** →
   [formal/ANALYSIS.md](../formal/ANALYSIS.md)
 - **Cross-parity tests (Python ↔ Solidity state-machine validation)** →
   `tests/test_cross_parity.py` and `contracts/test/CrossParity.t.sol`
