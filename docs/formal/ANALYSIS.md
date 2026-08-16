@@ -1,7 +1,7 @@
-# Formal Protocol Analysis — ETP
+# Formal Protocol Analysis — ETP (now LTP)
 
-**Date:** 2026-03-29
-**Tool:** [Verifpal](https://verifpal.com/) v0.27+
+**Date:** 2026-03-29 (model), 2026-08-16 (first verification run)
+**Tool:** [Verifpal](https://verifpal.com/) v0.27.4, built from source
 **Model:** [`etp-protocol.vp`](etp-protocol.vp)
 
 ## Overview
@@ -61,29 +61,65 @@ verifpal verify docs/formal/etp-protocol.vp
 
 ## Results
 
-_To be populated after running Verifpal analysis._
+First run 2026-08-16, Verifpal 0.27.4 (active attacker, unbounded
+sessions). Full output: [`verifpal-run-2026-08-16.md`](verifpal-run-2026-08-16.md).
+
+| Property | Query | Verdict |
+|----------|-------|---------|
+| CEK confidentiality | `confidentiality? cek` | ✅ **Verified** — attacker never learns the CEK |
+| Content confidentiality | `confidentiality? content` | ✅ **Verified** — attacker never learns the plaintext |
+| Commitment authentication | `authentication? Sender -> Receiver: commitment` | ❌ **Fails** — the attacker can (re)deliver the signed commitment; there is no session binding on the delivery |
+| Sealed key authentication | `authentication? Sender -> Receiver: sealed_key` | ❌ **Fails** — a sealed lattice key can be **replayed across sessions**; the Receiver accepts an old sealed key as fresh |
+
+**Model corrections.** The 2026-03-29 model had never been run and did
+not pass Verifpal's model checks (a duplicate `sender_vk` send; the
+Receiver consuming `cek`, `entity_nonce`, and `encrypted_shards` it was
+never sent). The 2026-08-16 revision fixes those while preserving the
+protocol's intent, and marks the pre-protocol identity-key exchange as
+guarded (authentic distribution) — the assumption this document's
+Interpretation section always made. The change log is at the top of
+[`etp-protocol.vp`](etp-protocol.vp).
 
 ## Interpretation
 
-The symbolic analysis verifies that:
+1. **An active attacker cannot learn the CEK or content** — verified.
+   The ML-KEM-768 envelope (modeled as DH) ensures that only the
+   intended receiver can derive the shared secret needed to unseal the
+   lattice key, *given authentic identity-key distribution* (the guarded
+   pre-protocol exchange). Without that assumption the unauthenticated
+   key exchange is trivially MITM-able; deployments must provide it (key
+   directory, out-of-band verification).
 
-1. **An active attacker cannot learn the CEK or content** — the ML-KEM-768
-   envelope (modeled as DH) ensures that only the intended receiver can derive
-   the shared secret needed to unseal the lattice key.
+2. **The authentication failures are replay findings, not forgery.**
+   The attacker cannot forge a commitment (the ML-DSA signature holds)
+   or open the sealed key. What Verifpal shows is *message agreement
+   with freshness* failing: both artifacts are accepted by the Receiver
+   when delivered (or re-delivered, across sessions) by the attacker.
+   - For the **commitment record** this is largely by design — it is a
+     public, self-authenticating artifact that anyone may relay; the
+     signature, not the channel, carries its authority. The finding
+     still stands as stated: the *delivery* is not authenticated.
+   - For the **sealed lattice key** the finding is substantive: nothing
+     binds a sealed key to a session, to freshness, or to the receiver's
+     encapsulation key. A replayed sealed key causes re-materialization
+     of the same entity. This independently corroborates the KEM
+     ciphertext-binding gap disclosed in whitepaper §3.3 (the Bhargavan
+     et al. binding property is not currently discharged). Mitigations:
+     policy enforcement (`max_materializations`, §2.2.1) bounds the
+     damage; the planned fix is to bind the receiver encapsulation-key
+     fingerprint and entity_id into the sealed key's AEAD associated
+     data, with a freshness component, in a future protocol revision.
 
-2. **Commitment records are authenticated** — ML-DSA-65 signatures (modeled as
-   SIGN/SIGNVERIF) bind the commitment to the sender's identity.
-
-3. **The sealed key is authenticated** — AEAD encryption with the KEM-derived
-   shared secret ensures integrity and authenticity of the lattice key.
-
-These properties hold under the symbolic model. Computational security depends
-on the hardness of the Module-LWE problem (ML-KEM-768) and Module-SIS problem
-(ML-DSA-65), both conjectured to be quantum-resistant.
+3. **Computational security** depends on the hardness of the Module-LWE
+   problem (ML-KEM-768) and Module-SIS problem (ML-DSA-65), both
+   conjectured to be quantum-resistant. The symbolic model says nothing
+   about this.
 
 ## Next Steps
 
-- Run the model and record results in the Results section above
+- ~~Run the model and record results in the Results section above~~ — done 2026-08-16
+- Re-run after the sealed-key AAD binding lands and check that the
+  sealed-key authentication query flips to verified
 - Extend the model to cover bridge relay (L1→L2 transfer)
 - Explore key compromise impersonation (KCI) resistance
 - Consider modeling the governance/upgrade path
