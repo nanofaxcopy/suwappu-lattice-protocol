@@ -436,6 +436,13 @@ Step 4: Any 3 of 6 shards reconstruct via Vandermonde inversion
 
 Implementers SHOULD verify their erasure coding implementation against these vectors and the reference tests in `tests/test_erasure.py` and `tests/test_formal_math.py`. NIST ACVP vectors cover only the ML-KEM/ML-DSA primitives (`tests/test_acvp_mlkem.py`, `tests/test_acvp_mldsa.py`), not erasure coding.
 
+Both vectors above are independently recomputed inside the Lean proof kernel from a
+from-scratch GF(2⁸) implementation (`formal/lean/Ltp/TestVectors.lean`, checked in CI) and
+pinned against the reference implementation by
+`tests/test_production_assertions.py` — the printed bytes, the Lean kernel, and
+`src/ltp/erasure.py` are three independent computations agreeing on the same constants
+(see §3.3.8).
+
 **Security Invariant — Nonce Derivation:**
 
 Each shard's AEAD nonce is derived as:
@@ -447,7 +454,11 @@ nonce_i = H(CEK || entity_id || shard_index)[:nonce_len]
 where `nonce_len` is the AEAD algorithm's required nonce length and `H` is the protocol's
 hash function. The reference implementation's AEAD is **XChaCha20-Poly1305** (24-byte /
 192-bit nonce); AES-256-GCM and ChaCha20-Poly1305 (12-byte / 96-bit nonce) are conformant
-alternatives. This construction
+alternatives. Standardization note: XChaCha20-Poly1305 is specified only in an expired
+IRTF draft (`draft-irtf-cfrg-xchacha`), though it is widely and interoperably implemented
+(libsodium, WireGuard, Tink, Go x/crypto); deployments constrained to standards-track or
+FIPS-approved algorithms SHOULD select AES-256-GCM and accept the shorter nonce (with the
+correspondingly larger collision term below). This construction
 provides defense-in-depth: nonce uniqueness depends on both CEK freshness *and* the
 entity's identity, meaning a (CEK, entity_id) pair is sufficient to guarantee distinct
 nonces across all shards of a single entity.
@@ -1019,7 +1030,7 @@ $\mathsf{Adv}^{\text{AUTH}}_{\text{AEAD}}$ is the AEAD authentication advantage.
 
 #### 3.3.3 Transfer Confidentiality (IND-CPA)
 
-**ML-KEM-768 Security Parameters.** The sealed lattice key's confidentiality reduces to the Module-LWE problem with parameters (k=3, q=3329, η₁=2, η₂=2), achieving NIST Security Level 3 — equivalent to AES-192 against quantum adversaries. The IND-CCA2 property is obtained via the Fujisaki-Okamoto transform applied to an IND-CPA-secure K-PKE scheme [Bos et al., 2017; FIPS 203 §4]. The recent formal verification of Signal's PQXDH protocol [Bhargavan et al., USENIX Security 2024] — the first machine-checked post-quantum security proof of a real-world protocol using CryptoVerif — identified a KEM binding property requirement: the KEM ciphertext must be bound to the *receiver's encapsulation key*. **LTP's current sealed-key construction does NOT discharge this property**: the sealed lattice key binds entity_id (derived from the sender's verification key) but contains no receiver key material, so the ciphertext is not bound to the receiver's encapsulation key. A 2026-08 Verifpal symbolic analysis of the protocol (`docs/formal/`) independently found the corresponding weakness: sealed lattice keys can be replayed across sessions, because the sealed key carries no freshness or receiver binding. The planned mitigation — scheduled for a future protocol revision — is to include the receiver encapsulation-key fingerprint and the entity_id in the AEAD associated data of the sealed key, closing both findings.
+**ML-KEM-768 Security Parameters.** The sealed lattice key's confidentiality reduces to the Module-LWE problem with parameters (k=3, q=3329, η₁=2, η₂=2), achieving NIST Security Level 3 — equivalent to AES-192 against quantum adversaries. The IND-CCA2 property is obtained via the Fujisaki-Okamoto transform applied to an IND-CPA-secure K-PKE scheme [Bos et al., 2017; FIPS 203 §4]. The recent formal verification of Signal's PQXDH protocol [Bhargavan et al., USENIX Security 2024] — the first machine-checked post-quantum security proof of a real-world protocol using CryptoVerif — identified a KEM binding property requirement: the KEM ciphertext must be bound to the *receiver's encapsulation key*. **LTP's current sealed-key construction does NOT discharge this property**: the sealed lattice key binds entity_id (derived from the sender's verification key) but contains no receiver key material, so the ciphertext is not bound to the receiver's encapsulation key. A 2026-08 Verifpal symbolic analysis of the protocol (`docs/formal/`) independently found the corresponding weakness: sealed lattice keys can be replayed across sessions, because the sealed key carries no freshness or receiver binding. The planned mitigation — scheduled for a future protocol revision — is to include the receiver encapsulation-key fingerprint and the entity_id in the AEAD associated data of the sealed key, closing both findings. This mirrors the guidance in HPKE [RFC 9180], which binds additional identities into the context/AAD rather than relying on the KEM alone. Protocol-level binding is necessary rather than optional here: in the X-BIND taxonomy of Cremers, Dax, and Medinger ["Keeping Up with the KEMs", ePrint 2023/1933], ML-KEM itself provides LEAK-BIND-K-CT and LEAK-BIND-K-PK but is **not** MAL-BIND-K-CT or MAL-BIND-K-PK [Schmieg, "Unbindable Kemmy Schmidt", ePrint 2024/523] — a maliciously generated key pair can break ciphertext binding at the primitive level, so no choice of KEM parameters alone can discharge the obligation.
 
 **Definition (TCONF game).** Transfer confidentiality is defined via an IND-CPA-style
 indistinguishability game adapted for LTP's commit-lattice-materialize structure:
@@ -1255,7 +1266,7 @@ them, two machine-checked artifacts exist in the reference repository as of
 spirit of §3.3.7, exactly what they do not.
 
 **Lean 4 proofs** (`formal/lean/`, CI-gated, `sorry`-free with a
-negative-tested axiom audit; 47 audited theorems). Machine-checked claims
+negative-tested axiom audit; 52 audited theorems). Machine-checked claims
 that correspond to statements made in this paper:
 
 | Paper claim | Lean theorem |
@@ -1267,6 +1278,7 @@ that correspond to statements made in this paper:
 | The §2.2.1 access-policy algebra: one-time keys exhaust, the mandated fail-closed mode never over-grants, and attenuation never amplifies authority (§8.4) | `one_time_exhausts`, `minimal_is_sound`, `attenuate_no_amplify` |
 | Two ≥ 2/3 governance supermajorities share an honest voter when < n/3 of operators are Byzantine (§5.1); the bound is tight at exactly n/3 | `supermajority_safety`, `safety_bound_tight` |
 | The corridor 7-of-9 attestation quorum: any two attestations share an honest signer with ≤ 4 Byzantine super-nodes | `corridor_safety` |
+| Both §2.1.1 interoperability test vectors, recomputed inside the Lean kernel over a from-scratch GF(2⁸) implementation and checked byte-for-byte | `vector1_matches`, `vector2_matches`, `vector2_framing` |
 
 These are proofs **about small models of the specification, not about the
 implementation**: the erasure theorems assume the MDS threshold shape rather
@@ -2373,10 +2385,16 @@ is designed to accommodate regional algorithm requirements without protocol-leve
 
 **No hybrid PQ/classical KEM mode.** NIST and CRYPTREC currently recommend hybrid
 constructions (e.g., ML-KEM combined with X25519) during the post-quantum transition, as
-insurance against undiscovered weaknesses in the newer lattice assumptions. LTP v1 is
+insurance against undiscovered weaknesses in the newer lattice assumptions; NIST IR 8547
+(the PQC transition roadmap) schedules deprecation of quantum-vulnerable algorithms around
+2030 and removal by 2035, and deployed practice has converged on hybrids such as
+X25519MLKEM768 in TLS 1.3. LTP v1 is
 PQ-only by design — there is no classical fallback, which removes the downgrade attack
 surface at the cost of forgoing the hybrid hedge. This is a deliberate trade-off. A hybrid
-profile is possible via the crypto-agility mechanism above and is future work.
+profile is possible via the crypto-agility mechanism above and is future work; a natural
+candidate is a combined KEM in the style of X-Wing (X25519 + ML-KEM-768 with a single
+joint shared secret), which would slot into the existing `algorithm` negotiation without
+changing the sealed-key envelope shape.
 
 **Regulatory considerations.** Immutability can appear to conflict with deletion mandates
 (e.g., GDPR/CCPA erasure rights). LTP stores only encrypted shards; destroying the CEK and
@@ -2597,7 +2615,7 @@ sufficiently large receiver population (break-even: $N > \rho$).
 |---------|------|---------|
 | 0.1.0-draft | 2026-02-24 | Initial draft; reviewed by external review rounds 001–003 (formal + mathematical) and 004 (research landscape), `docs/security/audits/external/whitepaper-reviews/`. |
 | 0.1.0-draft (rev) | 2026-03-29 | Post-review corrections: test-vector arithmetic, BHT collision bound (~85-bit), cost-model expansion factor ρ = nr/k, nonce-derivation invariant, TCONF log binding, ZK-mode specification, theorem-numbering note. |
-| 0.2.0 | 2026-08-17 | Publication revision: threshold-secrecy claims conditioned per §3.3.5 throughout; erasure-coding spec re-baselined to the reference implementation (consecutive evaluation points, length-prefix framing) with regenerated test vectors — the evaluation points were re-baselined from the unimplemented powers-of-α scheme to the implemented consecutive-points scheme (α_i = i+1), test vectors regenerated from the reference implementation, superseding the §2.1.1 arithmetic checked in review rounds 001–002; the `encoding_params` `eval` label string is retained verbatim for record-hash compatibility; commitment-record size corrected; KEM-binding claim corrected to a disclosed limitation with planned mitigation; normative conflicts resolved (low-entropy × quantum threat model; extension registry created; log hash primitive unified on BLAKE3-256); disclosure paragraphs for deferred wire formats, hybrid KEM, regulatory posture, forward-secrecy caveats, key-rotation gap; machine-checked verification status section added (§3.3.8) covering the 47 Lean 4 theorems and the first recorded Verifpal run (2 confidentiality queries verified, 2 authentication replay findings disclosed with planned mitigation). |
+| 0.2.0 | 2026-08-17 | Publication revision: threshold-secrecy claims conditioned per §3.3.5 throughout; erasure-coding spec re-baselined to the reference implementation (consecutive evaluation points, length-prefix framing) with regenerated test vectors — the evaluation points were re-baselined from the unimplemented powers-of-α scheme to the implemented consecutive-points scheme (α_i = i+1), test vectors regenerated from the reference implementation, superseding the §2.1.1 arithmetic checked in review rounds 001–002; the `encoding_params` `eval` label string is retained verbatim for record-hash compatibility; commitment-record size corrected; KEM-binding claim corrected to a disclosed limitation with planned mitigation; normative conflicts resolved (low-entropy × quantum threat model; extension registry created; log hash primitive unified on BLAKE3-256); disclosure paragraphs for deferred wire formats, hybrid KEM, regulatory posture, forward-secrecy caveats, key-rotation gap; machine-checked verification status section added (§3.3.8) covering the 52 Lean 4 theorems — including both §2.1.1 test vectors recomputed inside the Lean kernel — and the first recorded Verifpal run (2 confidentiality queries verified, 2 authentication replay findings disclosed with planned mitigation); literature positioning updated per the 2026-08-16 research round (X-BIND KEM-binding taxonomy, NIST IR 8547 transition posture, XChaCha20-Poly1305 standardization status). |
 
 ---
 

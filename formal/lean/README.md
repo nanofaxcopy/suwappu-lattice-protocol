@@ -34,6 +34,7 @@ strength. A cold `lake build` takes seconds.
 | `attenuate_no_amplify` | `Ltp/Policy.lean` | Macaroon-style attenuation never grants what the parent policy denies (the §8.4 capability claim) |
 | `supermajority_safety` / `supermajority_liveness` | `Ltp/Governance.lean` | Classical BFT bounds for §5.1 governance: two 2/3 supermajorities share an honest voter when < n/3 are Byzantine; < n/3 unavailable still leaves a supermajority |
 | `safety_bound_tight` | `Ltp/Governance.lean` | Concrete counterexample at exactly n/3 Byzantine — the hypothesis cannot be weakened to ≤ |
+| `vector1_matches` / `vector2_matches` / `vector2_framing` | `Ltp/TestVectors.lean` | Both §2.1.1 interoperability test vectors recomputed in-kernel over a from-scratch GF(2⁸) (0x11D) and `decide`d byte-for-byte — the paper, the Lean kernel, and `src/ltp/erasure.py` are three independent computations agreeing on the same constants |
 
 Plus the generic forms (`quorum_intersection_general`) so the results are
 not specific to 7-of-9, and the counting lemmas they rest on.
@@ -117,6 +118,7 @@ formal/lean/
   Ltp/Erasure.lean     k-of-n reconstruction threshold consequences
   Ltp/Policy.lean      access-policy algebra (attenuation, fail-closed)
   Ltp/Governance.lean  2/3-supermajority BFT bounds
+  Ltp/TestVectors.lean §2.1.1 test vectors recomputed over GF(2⁸)
   Ltp/Audit.lean       #print axioms for every headline theorem
   verify.sh            build + hole scan + axiom audit
 ```

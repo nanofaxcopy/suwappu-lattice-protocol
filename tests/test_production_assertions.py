@@ -144,31 +144,58 @@ class TestZfecDispatch:
         assert recovered == data
 
     @pytest.mark.skipif(not _zfec_available, reason="zfec not installed")
-    def test_zfec_matches_pure_python(self):
-        """Verify zfec and pure Python both round-trip to the same original data."""
-        import ltp.erasure as erasure_mod
-
+    def test_zfec_requires_opt_in(self, monkeypatch):
+        """zfec is systematic (non-conformant per whitepaper §2.1.1), so it
+        must never be used unless explicitly opted into via
+        LTP_ERASURE_BACKEND=zfec."""
         data = os.urandom(512)
         n, k = 6, 3
 
-        # Encode + decode with zfec
+        # Default: conformant pure-Python path, even with zfec installed.
+        monkeypatch.delenv("LTP_ERASURE_BACKEND", raising=False)
+        shards_default = ErasureCoder.encode(data, n, k)
+
+        # Opt-in: zfec path.
+        monkeypatch.setenv("LTP_ERASURE_BACKEND", "zfec")
         shards_zfec = ErasureCoder.encode(data, n, k)
-        shard_dict_zfec = {i: shards_zfec[i] for i in range(k)}
-        recovered_zfec = ErasureCoder.decode(shard_dict_zfec, n, k)
-
-        # Encode + decode with pure Python (temporarily disable zfec)
-        original_flag = erasure_mod._zfec_available
-        try:
-            erasure_mod._zfec_available = False
-            shards_py = ErasureCoder.encode(data, n, k)
-            shard_dict_py = {i: shards_py[i] for i in range(k)}
-            recovered_py = ErasureCoder.decode(shard_dict_py, n, k)
-        finally:
-            erasure_mod._zfec_available = original_flag
-
-        # Both backends must recover the original data
+        recovered_zfec = ErasureCoder.decode({i: shards_zfec[i] for i in range(k)}, n, k)
         assert recovered_zfec == data
-        assert recovered_py == data
+
+        # zfec is systematic: its shard 0 is the raw first chunk, which the
+        # conformant non-systematic encoding must NOT produce.
+        assert shards_zfec != shards_default
+
+        # And the conformant path still round-trips.
+        monkeypatch.delenv("LTP_ERASURE_BACKEND", raising=False)
+        recovered_default = ErasureCoder.decode({i: shards_default[i] for i in range(k)}, n, k)
+        assert recovered_default == data
+
+    def test_default_backend_matches_whitepaper_vector(self, monkeypatch):
+        """The default encode path must reproduce the §2.1.1 Complete Test
+        Vector byte-for-byte, whether or not zfec is installed."""
+        monkeypatch.delenv("LTP_ERASURE_BACKEND", raising=False)
+        shards = ErasureCoder.encode(b"Hello!", n=6, k=3)
+        expected = [
+            bytes([0x6C, 0x6C, 0x69, 0x69, 0x65]),
+            bytes([0xAD, 0xAD, 0xAD, 0x14, 0xCA]),
+            bytes([0xC1, 0xC1, 0xC4, 0x7D, 0xAF]),
+            bytes([0x8E, 0x8E, 0xA6, 0x17, 0x89]),
+            bytes([0xE2, 0xE2, 0xCF, 0x7E, 0xEC]),
+            bytes([0x23, 0x23, 0x0B, 0x03, 0x43]),
+        ]
+        assert shards == expected
+        assert ErasureCoder.decode({0: shards[0], 2: shards[2], 4: shards[4]}, 6, 3) == b"Hello!"
+        assert ErasureCoder.decode({3: shards[3], 4: shards[4], 5: shards[5]}, 6, 3) == b"Hello!"
+
+    def test_n_bounded_by_gf256_points(self, monkeypatch):
+        """α_i = i + 1 needs n distinct non-zero field elements: n ≤ 255."""
+        monkeypatch.delenv("LTP_ERASURE_BACKEND", raising=False)
+        with pytest.raises(ValueError, match="255"):
+            ErasureCoder.encode(b"x", n=256, k=2)
+        shards = ErasureCoder.encode(b"boundary", n=255, k=2)
+        assert len(shards) == 255
+        recovered = ErasureCoder.decode({253: shards[253], 254: shards[254]}, 255, 2)
+        assert recovered == b"boundary"
 
     def test_encode_empty_data(self):
         data = b""

@@ -33,7 +33,9 @@ def test_composite_sign_verify_round_trips(registry, composite_keypair):
         sig = registry.sign(AlgorithmId.MLDSA65_ED25519_SHA512, sk, message, DOMAIN_SIGNED_ENVELOPE)
 
     assert len(sig) == 3373  # 3309B ML-DSA-65 + 64B Ed25519
-    assert registry.verify(AlgorithmId.MLDSA65_ED25519_SHA512, vk, message, DOMAIN_SIGNED_ENVELOPE, sig)
+    assert registry.verify(
+        AlgorithmId.MLDSA65_ED25519_SHA512, vk, message, DOMAIN_SIGNED_ENVELOPE, sig
+    )
 
 
 def test_composite_rejects_forged_ed25519_component(registry, composite_keypair):
@@ -82,7 +84,9 @@ def test_composite_rejects_wrong_key(registry, composite_keypair):
 
 def test_composite_sign_rejects_wrong_sk_size(registry):
     with pytest.raises(ValueError, match="composite sk must be"):
-        registry.sign(AlgorithmId.MLDSA65_ED25519_SHA512, b"\x00" * 10, b"msg", DOMAIN_SIGNED_ENVELOPE)
+        registry.sign(
+            AlgorithmId.MLDSA65_ED25519_SHA512, b"\x00" * 10, b"msg", DOMAIN_SIGNED_ENVELOPE
+        )
 
 
 def test_composite_verify_rejects_wrong_vk_size(registry, composite_keypair):

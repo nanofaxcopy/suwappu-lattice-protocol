@@ -6,6 +6,7 @@ import Ltp.Bandwidth
 import Ltp.Erasure
 import Ltp.Policy
 import Ltp.Governance
+import Ltp.TestVectors
 
 /-
 Axiom audit.
@@ -87,3 +88,10 @@ open Suwappu.LTP.Commitment
 #print axioms Suwappu.LTP.Governance.supermajority_safety
 #print axioms Suwappu.LTP.Governance.supermajority_liveness
 #print axioms Suwappu.LTP.Governance.safety_bound_tight
+
+-- §2.1.1 interoperability test vectors, recomputed in-kernel over GF(2⁸)
+#print axioms Suwappu.LTP.TestVectors.gf_sanity
+#print axioms Suwappu.LTP.TestVectors.vector1_matches
+#print axioms Suwappu.LTP.TestVectors.vector1_non_systematic
+#print axioms Suwappu.LTP.TestVectors.vector2_framing
+#print axioms Suwappu.LTP.TestVectors.vector2_matches

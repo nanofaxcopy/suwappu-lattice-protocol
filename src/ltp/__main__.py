@@ -1165,7 +1165,8 @@ def compliance_demo() -> None:
     nonce = secure_random_bytes(AEAD.NONCE_SIZE)
     ct = provider.encrypt(key, test_data, nonce)
     pt = provider.decrypt(key, ct, nonce)
-    assert pt == test_data, "AEAD round-trip failed"
+    if pt != test_data:
+        raise RuntimeError("AEAD round-trip failed")
     print(f"  AEAD round-trip: OK ({len(ct)} bytes ciphertext)")
     print()
 
@@ -1223,7 +1224,8 @@ def compliance_demo() -> None:
     eu_shards = eu_node.shard_count
     print(f"  Shards on US nodes: {us_shards}")
     print(f"  Shards on EU nodes: {eu_shards} (geo-fenced out)")
-    assert eu_shards == 0, "Geo-fence violation: shards placed in EU"
+    if eu_shards != 0:
+        raise RuntimeError("Geo-fence violation: shards placed in EU")
     print(f"  [PASS] Geo-fence enforced: all shards in US jurisdiction")
     print()
 
