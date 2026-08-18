@@ -44,6 +44,14 @@
 % resolve it silently emits U+FFFD rather than erroring, which is worse
 % than no fallback at all.)
 \newfontfamily\ltpcjk{WenQuanYi Zen Hei}
+% Bare `{...}` in the Markdown source is NOT recognized by pandoc's
+% raw_tex extension as a raw-LaTeX grouping construct -- pandoc escapes
+% literal braces in its output (`\{`, `\}`), which strips the scope off
+% a bare `{\ltpcjk ...}` and lets the font selection bleed into every
+% paragraph after it. A `\command{...}` form IS recognized as raw TeX
+% and passed through unescaped, so route CJK text through this wrapper
+% instead of relying on bare braces in preprocess.py.
+\newcommand{\ltpcjktext}[1]{{\ltpcjk #1}}
 
 % --- Page ------------------------------------------------------------------
 \usepackage[a4paper,margin=1in]{geometry}

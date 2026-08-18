@@ -134,6 +134,8 @@ ML-DSA-65 · BLAKE3 · Certificate Transparency · Reed-Solomon coding
     - [8.5 Peer-to-Peer Content Distribution](#85-peer-to-peer-content-distribution)
     - [8.6 Hybrid and Convergent Systems](#86-hybrid-and-convergent-systems)
     - [8.7 What LTP Contributes](#87-what-ltp-contributes)
+    - [8.8 International Post-Quantum Standardization Landscape](#88-international-post-quantum-standardization-landscape)
+    - [8.9 Data Availability Sampling and Verifiable Erasure-Coded Commitments](#89-data-availability-sampling-and-verifiable-erasure-coded-commitments)
     - [References](#references)
 - [9. Use Cases](#9-use-cases)
     - [9.1 Large File Fan-Out](#91-large-file-fan-out)
@@ -325,7 +327,7 @@ The three phases provide cumulative security guarantees, formalized in §3.3:
 | **LATTICE** | Signed commitment binds sender | ML-KEM-768 sealed to receiver (IND-CCA2) | Fresh encapsulation per transfer | Theorems 5, 8 (§3.3.3, §3.3.6) |
 | **MATERIALIZE** | Signature + Merkle root verified | Plaintext reconstructed by receiver only | Preserved (ephemeral shared secret discarded) | Theorems 6, 7 (§3.3.4, §3.3.5) |
 
-This follows the pattern established by the Noise Protocol Framework [Perrin, 2018], where security properties are tracked per-message through the handshake. LTP's three phases correspond to a three-message protocol with strictly increasing security guarantees.
+This follows the pattern established by the Noise Protocol Framework [23], where security properties are tracked per-message through the handshake. LTP's three phases correspond to a three-message protocol with strictly increasing security guarantees.
 
 ### 2.1 Phase 1: COMMIT
 
@@ -1030,7 +1032,7 @@ $\mathsf{Adv}^{\text{AUTH}}_{\text{AEAD}}$ is the AEAD authentication advantage.
 
 #### 3.3.3 Transfer Confidentiality (IND-CPA)
 
-**ML-KEM-768 Security Parameters.** The sealed lattice key's confidentiality reduces to the Module-LWE problem with parameters (k=3, q=3329, η₁=2, η₂=2), achieving NIST Security Level 3 — equivalent to AES-192 against quantum adversaries. The IND-CCA2 property is obtained via the Fujisaki-Okamoto transform applied to an IND-CPA-secure K-PKE scheme [Bos et al., 2017; FIPS 203 §4]. The recent formal verification of Signal's PQXDH protocol [Bhargavan et al., USENIX Security 2024] — the first machine-checked post-quantum security proof of a real-world protocol using CryptoVerif — identified a KEM binding property requirement: the KEM ciphertext must be bound to the *receiver's encapsulation key*. **LTP's current sealed-key construction does NOT discharge this property**: the sealed lattice key binds entity_id (derived from the sender's verification key) but contains no receiver key material, so the ciphertext is not bound to the receiver's encapsulation key. A 2026-08 Verifpal symbolic analysis of the protocol (`docs/formal/`) independently found the corresponding weakness: sealed lattice keys can be replayed across sessions, because the sealed key carries no freshness or receiver binding. The planned mitigation — scheduled for a future protocol revision — is to include the receiver encapsulation-key fingerprint and the entity_id in the AEAD associated data of the sealed key, closing both findings. This mirrors the guidance in HPKE [RFC 9180], which binds additional identities into the context/AAD rather than relying on the KEM alone. Protocol-level binding is necessary rather than optional here: in the X-BIND taxonomy of Cremers, Dax, and Medinger ["Keeping Up with the KEMs", ePrint 2023/1933], ML-KEM itself provides LEAK-BIND-K-CT and LEAK-BIND-K-PK but is **not** MAL-BIND-K-CT or MAL-BIND-K-PK [Schmieg, "Unbindable Kemmy Schmidt", ePrint 2024/523] — a maliciously generated key pair can break ciphertext binding at the primitive level, so no choice of KEM parameters alone can discharge the obligation.
+**ML-KEM-768 Security Parameters.** The sealed lattice key's confidentiality reduces to the Module-LWE problem with parameters (k=3, q=3329, η₁=2, η₂=2), achieving NIST Security Level 3 — equivalent to AES-192 against quantum adversaries. The IND-CCA2 property is obtained via the Fujisaki-Okamoto transform applied to an IND-CPA-secure K-PKE scheme [20] (FIPS 203 §4 [24]). The recent formal verification of Signal's PQXDH protocol [21] — the first machine-checked post-quantum security proof of a real-world protocol using CryptoVerif — identified a KEM binding property requirement: the KEM ciphertext must be bound to the *receiver's encapsulation key*. **LTP's current sealed-key construction does NOT discharge this property**: the sealed lattice key binds entity_id (derived from the sender's verification key) but contains no receiver key material, so the ciphertext is not bound to the receiver's encapsulation key. A 2026-08 Verifpal symbolic analysis of the protocol (`docs/formal/`) independently found the corresponding weakness: sealed lattice keys can be replayed across sessions, because the sealed key carries no freshness or receiver binding. The planned mitigation — scheduled for a future protocol revision — is to include the receiver encapsulation-key fingerprint and the entity_id in the AEAD associated data of the sealed key, closing both findings. This mirrors the guidance in HPKE [26], which binds additional identities into the context/AAD rather than relying on the KEM alone. Protocol-level binding is necessary rather than optional here: in the X-BIND taxonomy of Cremers, Dax, and Medinger [27], ML-KEM itself provides LEAK-BIND-K-CT and LEAK-BIND-K-PK but is **not** MAL-BIND-K-CT or MAL-BIND-K-PK [28] — a maliciously generated key pair can break ciphertext binding at the primitive level, so no choice of KEM parameters alone can discharge the obligation.
 
 **Definition (TCONF game).** Transfer confidentiality is defined via an IND-CPA-style
 indistinguishability game adapted for LTP's commit-lattice-materialize structure:
@@ -1187,7 +1189,7 @@ primary confidentiality guarantee against adversaries who may know or guess cand
 The MDS threshold secrecy property provides a second line of defense for the specific case
 where an adversary has obtained the CEK but controls fewer than $k$ commitment nodes.
 
-**Formal basis.** The threshold secrecy of LTP's erasure coding follows from the MDS (Maximum Distance Separable) property of Reed-Solomon codes over GF(2⁸), first connected to secret sharing by McEliece and Sarwate [1981]. For a uniformly random (high-min-entropy) entity, any k−1 shards leave exactly one degree of freedom in the polynomial coefficient space, revealing zero information about the entity content in the Shannon sense. This information-theoretic guarantee holds regardless of the adversary's computational power, including against quantum adversaries — but, per the note above, only for content the adversary cannot guess or enumerate; for guessable content the deterministic encoding is trivially distinguishable and AEAD encryption (or ZK mode) is the operative protection.
+**Formal basis.** The threshold secrecy of LTP's erasure coding follows from the MDS (Maximum Distance Separable) property of Reed-Solomon codes over GF(2⁸), first connected to secret sharing by McEliece and Sarwate [22]. For a uniformly random (high-min-entropy) entity, any k−1 shards leave exactly one degree of freedom in the polynomial coefficient space, revealing zero information about the entity content in the Shannon sense. This information-theoretic guarantee holds regardless of the adversary's computational power, including against quantum adversaries — but, per the note above, only for content the adversary cannot guess or enumerate; for guessable content the deterministic encoding is trivially distinguishable and AEAD encryption (or ZK mode) is the operative protection.
 
 **In LTP's context:** Even if an adversary compromises $k - 1$ commitment nodes and decrypts
 the AEAD ciphertexts (by also obtaining the CEK) without prior knowledge of the entity,
@@ -2275,6 +2277,22 @@ encryption (ML-KEM). A Storj access grant can be used by anyone who possesses it
 lattice key is sealed to a specific receiver's encapsulation key and is useless to anyone
 else. This binds the capability to a cryptographic identity, not just to possession.
 
+**The closest precedent for KEM-bound envelopes is Signal's Sealed Sender (2018)** [34],
+which encrypts an envelope (sender certificate + ciphertext) under a key derived from an
+ephemeral sender key and the recipient's long-term identity key, so only the intended
+recipient can open it. This is the same primitive shape LTP's sealed lattice key uses —
+recipient-bound envelope encryption — applied to a different problem. Sealed Sender binds
+a *live message* to hide sender metadata from a server relaying it in real time; the
+sender and receiver are both online, or the message queues briefly for delivery. LTP binds
+a *capability to reconstruct out-of-band data* that may sit uncollected for an arbitrary
+period (subject to shard TTL, §5.3) while the entity itself lives in erasure-coded storage
+rather than in the envelope. The cryptographic mechanism is not new; applying it to
+asynchronous, capability-based storage retrieval — where the "message" is a pointer plus a
+key rather than the payload — is the specific combination in §8.7 point 2. Note also that
+Sealed Sender's binding is classical (X25519/Curve25519); LTP's is the post-quantum
+instance of the same idea (ML-KEM-768), inheriting the KEM ciphertext-binding caveats
+discussed in §3.3 [21, 27, 28] that classical DH-based sealing does not have.
+
 ### 8.5 Peer-to-Peer Content Distribution
 
 **BitTorrent (2001)** [12] demonstrated that large-file distribution could be decentralized:
@@ -2343,7 +2361,14 @@ Specifically:
    Unlike Tahoe-LAFS read-caps (static, no expiry built-in), the lattice key includes
    inline access policy (one-time, time-bounded, delegatable) and uses per-seal forward
    secrecy. The combination of capability + receiver binding + per-message forward secrecy +
-   inline policy in a constant-size token is, to our knowledge, not present in prior systems.
+   inline policy in a constant-size token is, to our knowledge, not present in prior
+   systems. The individual technique of KEM-bound envelope encryption is not new — Sealed
+   Sender (§8.4) [34] establishes it for live messaging — but Sealed Sender has no
+   capability semantics, no inline access policy, and nothing analogous to constant-size
+   erasure-coded storage retrieval; it solves a different problem (hiding sender metadata
+   from a relay) with the same cryptographic shape. The claim here is narrower than
+   "receiver-bound envelopes are new": it is that this specific bundle, applied to
+   asynchronous capability-based data retrieval, is.
 
 3. **Deterministic receiver-side location derivation.** In IPFS and Storj, the provider/sharer
    must communicate block CIDs or shard locations to the receiver explicitly. In LTP, the
@@ -2369,7 +2394,7 @@ cryptographic standards, each of which may influence regional adoption requireme
 | Country | Body | Program | Status (2025) | Relevance to LTP |
 |---------|------|---------|---------------|-----------------|
 | **USA** | NIST | FIPS 203 (ML-KEM), 204 (ML-DSA), 205 (SLH-DSA) | Standards final (Aug 2024); HQC selected as 2nd KEM | Primary alignment target |
-| **China** | CACR (中国密码学会) | Chinese PQC Algorithm Competition | Algorithm collection phase; openHiTLS provides ML-KEM/ML-DSA | Critical for SUWAPPU L1 deployment |
+| **China** | CACR (中国密码学会) [33] | Chinese PQC Algorithm Competition | Algorithm collection phase; openHiTLS [32] provides ML-KEM/ML-DSA | Critical for SUWAPPU L1 deployment |
 | **Japan** | CRYPTREC | CRYPTREC Report 2024 | Published Jul 2025; Symposium 2025 held | Government crypto evaluation |
 | **Korea** | KpqC | Korean PQC Competition | Evaluation phase; ETRI leads research | Independent algorithm track |
 | **France** | ANSSI | PQ Migration Recommendations | Published; supports hybrid schemes | EU regulatory influence |
@@ -2386,13 +2411,13 @@ is designed to accommodate regional algorithm requirements without protocol-leve
 **No hybrid PQ/classical KEM mode.** NIST and CRYPTREC currently recommend hybrid
 constructions (e.g., ML-KEM combined with X25519) during the post-quantum transition, as
 insurance against undiscovered weaknesses in the newer lattice assumptions; NIST IR 8547
-(the PQC transition roadmap) schedules deprecation of quantum-vulnerable algorithms around
+[29] (the PQC transition roadmap) schedules deprecation of quantum-vulnerable algorithms around
 2030 and removal by 2035, and deployed practice has converged on hybrids such as
 X25519MLKEM768 in TLS 1.3. LTP v1 is
 PQ-only by design — there is no classical fallback, which removes the downgrade attack
 surface at the cost of forgoing the hybrid hedge. This is a deliberate trade-off. A hybrid
 profile is possible via the crypto-agility mechanism above and is future work; a natural
-candidate is a combined KEM in the style of X-Wing (X25519 + ML-KEM-768 with a single
+candidate is a combined KEM in the style of X-Wing [30] (X25519 + ML-KEM-768 with a single
 joint shared secret), which would slot into the existing `algorithm` negotiation without
 changing the sealed-key envelope shape.
 
@@ -2402,6 +2427,43 @@ any outstanding lattice keys renders committed data permanently unreadable
 (crypto-shredding), which is the deployment-level deletion mechanism. A full
 multi-jurisdiction compliance matrix is future work, and this paper does not constitute a
 compliance claim.
+
+### 8.9 Data Availability Sampling and Verifiable Erasure-Coded Commitments
+
+**Data Availability Sampling (DAS)** [35] addresses a structurally similar problem from a
+different direction: a block proposer erasure-codes a block's data and publishes a compact
+commitment (a Merkle or polynomial commitment) to it; light clients then verify the *data
+is available* by sampling a few random positions, without downloading the block. Ethereum's
+Danksharding roadmap [36] is the deployed instance of this idea, and "Foundations of Data
+Availability Sampling" [37] gives it a general treatment: any linear erasure code, any
+polynomial or vector commitment, adaptive sampling.
+
+**What LTP's COMMIT phase and corridor quorum share with DAS:** both erasure-code a payload,
+publish a small commitment (LTP: the Merkle root of encrypted shard hashes plus an ML-DSA
+signature; DAS: a polynomial or vector commitment), and let a party verify availability
+without holding the full data (LTP: corridor super-nodes attesting 7-of-9, §5.1; DAS: light
+clients sampling positions). The corridor quorum's safety argument — two honest attestations
+must intersect, formalized in `corridor_safety` (`formal/lean/Ltp/Quorum.lean`) — is the
+same counting-argument shape used to reason about sampling-based availability guarantees.
+
+**Where LTP diverges:** DAS verifies availability for a *permissionless light client* that
+trusts no one and samples probabilistically; the guarantee is statistical (enough honest
+samples across enough honest light clients). LTP's corridor quorum is a *fixed committee*
+of 7-of-9 named super-nodes attesting deterministically, not a sampling protocol — it trades
+DAS's trustlessness for a stronger per-attestation guarantee at a fixed committee size
+(§5.1, and the machine-checked bound in `corridor_safety`/`corridor_liveness`). DAS also
+targets a different consumer: light clients verifying a *blockchain's* data availability,
+not a specific receiver materializing a specific entity. LTP's MATERIALIZE phase reconstructs
+the actual content for one designated receiver holding a sealed key; DAS never reconstructs
+the block for anyone in particular — availability, not delivery, is the guarantee.
+
+We do not claim LTP's quorum design is superior to DAS for the problem DAS solves (base-layer
+blockchain scaling); it solves a narrower problem under a different trust model. The
+resemblance is worth stating because both traditions arrived independently at "erasure-code,
+commit small, verify without downloading everything" as the right shape for availability
+guarantees — DAS from the blockchain-scaling literature, LTP from the transfer-protocol
+framing in §8.7.
+
 
 ### References
 
@@ -2443,14 +2505,41 @@ compliance claim.
 
 [19] Suwappu Labs, "SUWAPPU-DB: A Polymorphic Dual-VM State Substrate with Capability-Gated Mutation," companion implementation, 2026. https://github.com/Suwappu-Labs/suwappu-db
 
-- [Bos et al., 2017] CRYSTALS-Kyber: A CCA-secure module-lattice-based KEM. IACR ePrint 2017/634. https://eprint.iacr.org/2017/634
-- [Bhargavan et al., 2024] Formal verification of the PQXDH post-quantum key agreement protocol. USENIX Security 2024. https://www.usenix.org/conference/usenixsecurity24/presentation/bhargavan
-- [McEliece & Sarwate, 1981] On sharing secrets and Reed-Solomon codes. Communications of the ACM, 24(9). https://dl.acm.org/doi/10.1145/358746.358762
-- [Perrin, 2018] The Noise Protocol Framework. https://noiseprotocol.org/noise.html
-- [IETF CFRG] Guidelines for Writing Cryptography Specifications. draft-irtf-cfrg-cryptography-specification-01. https://www.ietf.org/archive/id/draft-irtf-cfrg-cryptography-specification-01.html
-- [Lipp et al., 2019] A Mechanised Cryptographic Proof of the WireGuard Virtual Private Network Protocol. EuroS&P 2019. https://inria.hal.science/hal-02100345v3/document
-- [openHiTLS] Open-source TLS library with ML-KEM/ML-DSA support. https://github.com/openHiTLS/openHiTLS
-- [CACR] Chinese Association for Cryptologic Research — Post-Quantum Algorithm Competition. http://www.cacrnet.org.cn/
+[20] J. Bos, L. Ducas, E. Kiltz, T. Lepoint, V. Lyubashevsky, J. M. Schanck, P. Schwabe, G. Seiler, D. Stehle, "CRYSTALS-Kyber: A CCA-Secure Module-Lattice-Based KEM," IEEE EuroS&P, 2018. IACR ePrint 2017/634. https://eprint.iacr.org/2017/634
+
+[21] K. Bhargavan et al., "Formal Verification of the PQXDH Post-Quantum Key Agreement Protocol for End-to-End Secure Messaging," USENIX Security, 2024. https://www.usenix.org/conference/usenixsecurity24/presentation/bhargavan
+
+[22] R. J. McEliece, D. V. Sarwate, "On Sharing Secrets and Reed-Solomon Codes," Communications of the ACM, 24(9), 1981. https://doi.org/10.1145/358746.358762
+
+[23] T. Perrin, "The Noise Protocol Framework," 2018. https://noiseprotocol.org/noise.html
+
+[24] National Institute of Standards and Technology, "Module-Lattice-Based Key-Encapsulation Mechanism Standard," FIPS 203, Aug. 2024. https://doi.org/10.6028/NIST.FIPS.203
+
+[25] National Institute of Standards and Technology, "Module-Lattice-Based Digital Signature Standard," FIPS 204, Aug. 2024. https://doi.org/10.6028/NIST.FIPS.204
+
+[26] R. Barnes, K. Bhargavan, B. Lipp, C. A. Wood, "Hybrid Public Key Encryption," RFC 9180, IETF, Feb. 2022. https://www.rfc-editor.org/rfc/rfc9180.html
+
+[27] C. Cremers, A. Dax, N. Medinger, "Keeping Up with the KEMs: Stronger Security Notions for KEMs and Automated Analysis of KEM-Based Protocols," IACR ePrint 2023/1933. https://eprint.iacr.org/2023/1933
+
+[28] S. Schmieg, "Unbindable Kemmy Schmidt: ML-KEM Is Neither MAL-BIND-K-CT nor MAL-BIND-K-PK," IACR ePrint 2024/523. https://eprint.iacr.org/2024/523
+
+[29] National Institute of Standards and Technology, "Transition to Post-Quantum Cryptography Standards," NIST IR 8547 (Initial Public Draft), Nov. 2024. https://csrc.nist.gov/pubs/ir/8547/ipd
+
+[30] M. Barbosa, D. Connolly, J. Diogo Duarte, A. Kaiser, P. Schwabe, K. Varner, B. Westerbaan, "X-Wing: The Hybrid KEM You've Been Looking For," IACR ePrint 2024/039. https://eprint.iacr.org/2024/039
+
+[31] B. Lipp, B. Blanchet, K. Bhargavan, "A Mechanised Cryptographic Proof of the WireGuard Virtual Private Network Protocol," IEEE EuroS&P, 2019. https://inria.hal.science/hal-02100345v3/document
+
+[32] openHiTLS Community, "openHiTLS: Open-Source TLS Library with ML-KEM/ML-DSA Support," 2024. https://github.com/openHiTLS/openHiTLS
+
+[33] Chinese Association for Cryptologic Research (中国密码学会), "Post-Quantum Cryptography Algorithm Competition," 2023. http://www.cacrnet.org.cn/
+
+[34] Signal Foundation, "Technology Preview: Sealed Sender for Signal," Oct. 2018. https://signal.org/blog/sealed-sender/
+
+[35] M. Al-Bassam, A. Sonnino, V. Buterin, "Fraud and Data Availability Proofs: Maximising Light Client Security and Scaling Blockchains with Dishonest Majorities," arXiv:1809.09044, 2018.
+
+[36] Ethereum Foundation, "Danksharding," Ethereum Roadmap documentation, 2024. https://ethereum.org/roadmap/danksharding/
+
+[37] M. Hall-Andersen, M. Simkin, B. Wagner, "Foundations of Data Availability Sampling," IACR ePrint 2023/1079. https://eprint.iacr.org/2023/1079
 
 ---
 
@@ -2615,7 +2704,7 @@ sufficiently large receiver population (break-even: $N > \rho$).
 |---------|------|---------|
 | 0.1.0-draft | 2026-02-24 | Initial draft; reviewed by external review rounds 001–003 (formal + mathematical) and 004 (research landscape), `docs/security/audits/external/whitepaper-reviews/`. |
 | 0.1.0-draft (rev) | 2026-03-29 | Post-review corrections: test-vector arithmetic, BHT collision bound (~85-bit), cost-model expansion factor ρ = nr/k, nonce-derivation invariant, TCONF log binding, ZK-mode specification, theorem-numbering note. |
-| 0.2.0 | 2026-08-17 | Publication revision: threshold-secrecy claims conditioned per §3.3.5 throughout; erasure-coding spec re-baselined to the reference implementation (consecutive evaluation points, length-prefix framing) with regenerated test vectors — the evaluation points were re-baselined from the unimplemented powers-of-α scheme to the implemented consecutive-points scheme (α_i = i+1), test vectors regenerated from the reference implementation, superseding the §2.1.1 arithmetic checked in review rounds 001–002; the `encoding_params` `eval` label string is retained verbatim for record-hash compatibility; commitment-record size corrected; KEM-binding claim corrected to a disclosed limitation with planned mitigation; normative conflicts resolved (low-entropy × quantum threat model; extension registry created; log hash primitive unified on BLAKE3-256); disclosure paragraphs for deferred wire formats, hybrid KEM, regulatory posture, forward-secrecy caveats, key-rotation gap; machine-checked verification status section added (§3.3.8) covering the 52 Lean 4 theorems — including both §2.1.1 test vectors recomputed inside the Lean kernel — and the first recorded Verifpal run (2 confidentiality queries verified, 2 authentication replay findings disclosed with planned mitigation); literature positioning updated per the 2026-08-16 research round (X-BIND KEM-binding taxonomy, NIST IR 8547 transition posture, XChaCha20-Poly1305 standardization status). |
+| 0.2.0 | 2026-08-17 | Publication revision: threshold-secrecy claims conditioned per §3.3.5 throughout; erasure-coding spec re-baselined to the reference implementation (consecutive evaluation points, length-prefix framing) with regenerated test vectors — the evaluation points were re-baselined from the unimplemented powers-of-α scheme to the implemented consecutive-points scheme (α_i = i+1), test vectors regenerated from the reference implementation, superseding the §2.1.1 arithmetic checked in review rounds 001–002; the `encoding_params` `eval` label string is retained verbatim for record-hash compatibility; commitment-record size corrected; KEM-binding claim corrected to a disclosed limitation with planned mitigation; normative conflicts resolved (low-entropy × quantum threat model; extension registry created; log hash primitive unified on BLAKE3-256); disclosure paragraphs for deferred wire formats, hybrid KEM, regulatory posture, forward-secrecy caveats, key-rotation gap; machine-checked verification status section added (§3.3.8) covering the 52 Lean 4 theorems — including both §2.1.1 test vectors recomputed inside the Lean kernel — and the first recorded Verifpal run (2 confidentiality queries verified, 2 authentication replay findings disclosed with planned mitigation); literature positioning updated per the 2026-08-16 research round (X-BIND KEM-binding taxonomy, NIST IR 8547 transition posture, XChaCha20-Poly1305 standardization status); bibliography unified into a single consistent numbered style (37 references, every in-text citation resolves to exactly one entry and vice versa — previously three incompatible citation conventions coexisted and two citations, Cremers–Dax–Medinger and Schmieg, were referenced in §3.3 but absent from every reference list); FIPS 203/204, RFC 9180, NIST IR 8547, and X-Wing given first-class bibliography entries; new §8.9 positions LTP's corridor quorum against Data Availability Sampling (Al-Bassam et al., Danksharding, Hall-Andersen–Simkin–Wagner); §8.4 adds Signal's Sealed Sender as the closest KEM-bound-envelope precedent, and §8.7's constant-size-capability contribution claim is rescoped accordingly to the specific bundle rather than the underlying primitive; missing §8.8 TOC entry restored. |
 
 ---
 

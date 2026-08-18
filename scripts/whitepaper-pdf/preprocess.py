@@ -91,8 +91,11 @@ def strip_toc(text: str) -> str:
     return text[: m.start()] + text[m.end() + nxt.start() :]
 
 
-# CJK runs need a font the Latin text face cannot supply; wrap them so the
-# preamble's \ltpcjk family is selected for exactly those characters.
+# CJK runs need a font the Latin text face cannot supply; wrap them in the
+# preamble's \ltpcjktext{...} macro (a \command{...} form, not bare braces --
+# pandoc's raw_tex extension only passes \command{...} through unescaped; a
+# bare {\ltpcjk ...} group gets its braces escaped to \{ \}, which strips the
+# scope and lets the font selection bleed into every paragraph after it).
 CJK_RUN = re.compile(r"[　-〿぀-ヿ一-鿿＀-￯]+")
 
 # Fenced code blocks, kept verbatim. ``` or ~~~, any info string.
@@ -102,7 +105,7 @@ FENCE = re.compile(r"^(?P<f>```+|~~~+)[^\n]*\n.*?^(?P=f)[ \t]*$", re.M | re.S)
 def _substitute_prose(text: str) -> str:
     for glyph, replacement in GLYPHS.items():
         text = text.replace(glyph, replacement)
-    return CJK_RUN.sub(lambda m: r"{\ltpcjk " + m.group(0) + "}", text)
+    return CJK_RUN.sub(lambda m: r"\ltpcjktext{" + m.group(0) + "}", text)
 
 
 def substitute_glyphs(text: str) -> str:
