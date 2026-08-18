@@ -50,6 +50,21 @@ Four things here are load-bearing and easy to break:
 4. **`Highlighting` is redefined in `\AtBeginDocument`.** Pandoc defines that
    environment itself and overrides the global `\fvset`, which leaves the long
    pseudocode lines running past the margin.
+5. **CJK text goes through `\ltpcjktext{...}`, never a bare `{\ltpcjk ...}`
+   group.** Pandoc's `raw_tex` extension only passes `\command{...}` forms
+   through unescaped; a bare `{...}` group has its braces escaped to `\{`
+   `\}` in the LaTeX output, which strips the scope off the font switch and
+   lets it bleed into every paragraph after it — silently, since the result
+   still compiles, just with the wrong font applied three bibliography
+   entries later. If you add another CJK run, route it through
+   `preprocess.py`'s `CJK_RUN` substitution, not a hand-written brace group.
+6. **`autolink_bare_uris` is required, not optional.** Without it, a bare
+   `https://...` reference URL is typeset as ordinary justified text with no
+   valid break point, and one landing near a line's end overflows the page
+   margin by 50-100pt (very visible, unlike the two benign boxes below). The
+   extension wraps every bare URL in `\url{}`, which the loaded
+   `url`/`hyperref` machinery breaks at slashes.
 
-A clean build reports 50 pages, no missing characters, and two overfull boxes
-(~10pt and ~7pt — a CJK table cell and one hyphenation, both invisible).
+A clean build reports 50-53 pages (grows as citations/sections are added), no
+missing characters, and two overfull boxes (~5-10pt each — a CJK table cell
+and one hyphenation, both invisible).

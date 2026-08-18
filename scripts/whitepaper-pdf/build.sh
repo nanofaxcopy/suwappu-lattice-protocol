@@ -80,9 +80,12 @@ printf '\\newcommand{\\ltpversion}{%s}\n' "$VERSION" > "$WORK/version.tex"
 echo "==> [3/3] pandoc + lualatex"
 # `raw_tex` keeps the \textbf{} substitutions from the preprocessor intact;
 # `-raw_html` drops the few inline <br>/<sub> tags rather than passing them
-# through to LaTeX as literal text.
+# through to LaTeX as literal text. `autolink_bare_uris` wraps every bare
+# https://... reference URL in \url{}, which the loaded url/hyperref
+# machinery can break at slashes — without it, a bibliography URL landing
+# near a line's end has no valid break point and overflows the margin.
 pandoc "$WORK/body.md" \
-  -f markdown+pipe_tables+tex_math_dollars+raw_tex-raw_html \
+  -f markdown+pipe_tables+tex_math_dollars+raw_tex+autolink_bare_uris-raw_html \
   --pdf-engine=lualatex \
   --include-in-header="$WORK/version.tex" \
   --include-in-header=scripts/whitepaper-pdf/preamble.tex \
