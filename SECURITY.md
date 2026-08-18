@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in the Entanglement Transfer Protocol,
+If you discover a security vulnerability in LTP (Lattice Transfer Protocol),
 please report it responsibly.
 
 **Preferred:** Open a private report via GitHub Private Vulnerability Reporting:

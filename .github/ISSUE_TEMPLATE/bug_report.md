@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a bug in the Entanglement Transfer Protocol
+about: Report a bug in LTP (Lattice Transfer Protocol)
 title: "[Bug] "
 labels: bug
 assignees: ''
