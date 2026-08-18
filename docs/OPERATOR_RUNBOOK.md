@@ -1,6 +1,6 @@
-# ETP / LTP Operator Runbook
+# LTP Operator Runbook
 
-Operational guide for running an Entanglement Transfer Protocol node in
+Operational guide for running an LTP (Lattice Transfer Protocol) node in
 production. This document complements `docs/DEPLOYMENT_GUIDE.md` and the
 alerts defined in `deploy/observability/prometheus/alerts.yml`.
 

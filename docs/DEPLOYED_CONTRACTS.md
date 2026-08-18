@@ -1,4 +1,4 @@
-# ETP Deployed Contracts and Wallets
+# LTP Deployed Contracts and Wallets
 
 **Author:** Javier Calderon Jr, CTO — Suwappu (SUWAPPU)
 **Last Updated:** April 27, 2026

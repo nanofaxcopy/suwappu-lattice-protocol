@@ -1,4 +1,4 @@
-# ETP Production Roadmap
+# LTP Production Roadmap
 
 **Author:** Javier Calderon Jr, CTO — Suwappu (SUWAPPU)
 **Date:** May 11, 2026

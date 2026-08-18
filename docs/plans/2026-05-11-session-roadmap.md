@@ -1,4 +1,4 @@
-# ETP Session Roadmap — Current State to Feature-Complete
+# LTP Session Roadmap — Current State to Feature-Complete
 
 **Author:** Javier Calderon Jr, CTO — Suwappu (SUWAPPU)
 **Date:** May 11, 2026

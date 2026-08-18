@@ -1,4 +1,4 @@
-# ETP Observability Stack
+# LTP Observability Stack
 
 Local Prometheus + AlertManager + Grafana stack for monitoring one or
 more ETP / LTP nodes. Built for both developer laptops and production

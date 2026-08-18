@@ -1,4 +1,4 @@
-# ETP Bridge MVP — L1↔L2 Cross-Chain Transfer via Lattice Protocol
+# LTP Bridge MVP — L1↔L2 Cross-Chain Transfer via Lattice Protocol
 
 ## Problem Statement
 

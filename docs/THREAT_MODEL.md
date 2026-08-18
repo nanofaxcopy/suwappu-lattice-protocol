@@ -1,11 +1,11 @@
-# Threat Model — Entanglement Transfer Protocol
+# Threat Model — LTP (Lattice Transfer Protocol)
 
 **Version:** 1.0
 **Date:** 2026-03-29
 **Framework:** STRIDE + PQC-specific threat categories
 
-This document identifies assets, threat sources, and categorized threats for the
-Entanglement Transfer Protocol (ETP/LTP). For the full protocol specification,
+This document identifies assets, threat sources, and categorized threats for LTP
+(Lattice Transfer Protocol, formerly ETP). For the full protocol specification,
 see the [Whitepaper](WHITEPAPER.md). For implementation details, see the
 [Architecture](design-decisions/ARCHITECTURE.md).
 
