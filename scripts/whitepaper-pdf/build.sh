@@ -40,7 +40,7 @@ WORK="build/whitepaper"
 
 TITLE="LTP: Lattice Transfer Protocol"
 SUBTITLE="A data transfer protocol in which no data payload is transmitted between sender and receiver"
-AUTHOR="Jas Strokus"
+AUTHOR="Tsolmondorj Natsagdorj"
 AFFILIATION="Suwappu Labs"
 CONTACT="layerinfinite@gmail.com"
 
