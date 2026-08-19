@@ -13,7 +13,7 @@
 
 | **Author** | **Version** | **Date** | **Status** | **Classification** |
 |:----------:|:-----------:|:--------:|:----------:|:------------------:|
-| Tsolmondorj Natsagdorj | 0.2.0 | 2026-08-17 | Public Draft — Request for Comments | Public |
+| Tsolmondorj Natsagdorj | 0.2.1 | 2026-08-19 | Public Draft — Request for Comments | Public |
 
 </div>
 
@@ -36,7 +36,7 @@ size, with full post-quantum security as a default.
 |:---------|:----------|:----------|
 | Sender→receiver path | O(1) constant-size sealed key, independent of entity size | ML-KEM-768 (FIPS 203) |
 | Immutability | Content-addressed EntityID — any modification produces a different identity | BLAKE3-256 |
-| Threshold secrecy | Fewer than *k* shards reveal zero information about content that is not guessable/enumerable (see §3.3.5); guessable content requires ZK mode | Information-theoretic |
+| Threshold secrecy | Fewer than *k* shards leak at most a proportional fraction of joint entropy — exactly $t \cdot \log_2 256$ bits per byte position from $t$ shards, not zero (see §3.3.5); AEAD is the primary confidentiality guarantee, this is defense-in-depth. Guessable content requires ZK mode | Information-theoretic (partial) |
 | Non-repudiation | Append-only signed commitment record on a Merkle log | ML-DSA-65 (FIPS 204) |
 | Post-quantum security | Standard mode fully PQ-safe — no X25519 or Ed25519 in the protocol | ML-KEM + ML-DSA + BLAKE3 |
 | ZK privacy mode | Hiding commitment for EntityID fingerprinting prevention | Groth16 / BLS12-381 ⚠ |
@@ -758,7 +758,7 @@ implementation's AEAD is XChaCha20-Poly1305.
 | Man-in-the-middle intercepts lattice key | Entire key is sealed (envelope-encrypted) to receiver's public key; interceptor sees opaque ciphertext with zero metadata |
 | Attacker scrapes commitment log | Log contains only Merkle root of encrypted shard hashes — no shard IDs, no content, no CEK |
 | Attacker fetches shards from nodes | Shards are AEAD-encrypted with CEK; without CEK, ciphertext is computationally useless |
-| Attacker compromises < k nodes | Information-theoretic security: < k shards (even decrypted) reveal zero information about content that is not guessable/enumerable (see §3.3.5); guessable content requires ZK mode |
+| Attacker compromises < k nodes | Information-theoretic partial protection: t < k shards (even decrypted) leak exactly $t \cdot \log_2 256$ bits of joint entropy per byte position, not zero — see §3.3.5 for the exact bound and its practical limits near $t = k-1$. AEAD (Layer 4) is the primary guarantee here, not this layer; guessable content requires ZK mode |
 | Sender denies transfer occurred | Commitment record is on immutable append-only log with sender's signature |
 | Receiver claims different data was sent | Entity ID is deterministic hash of content; both parties can verify |
 | Replay attack (re-use lattice key) | Access policy can enforce one-time materialization; commitment nodes track access |
@@ -868,8 +868,9 @@ from $\{0,1\}^{256}$. The EntityID fingerprinting attack from §3.3.3 is neutral
 
 **Binding (immutability preserved).** By the binding property of the Poseidon commitment
 scheme and the soundness of Groth16, a sender cannot open blind_id to two distinct entity_ids
-without breaking Poseidon collision resistance. Theorem 8 (Transfer Immutability) holds in
-ZK mode with the additional binding assumption.
+without breaking Poseidon collision resistance. Theorem 8 (Transfer Immutability) — under
+its §3.3.6 expected-identity-binding hypothesis, unchanged by ZK mode — holds with the
+additional Poseidon/Groth16 binding assumption.
 
 **Non-repudiation preserved.** The ML-DSA-65 signature covers the full ZK commitment record
 (including blind_id and zk_proof). Theorem 6 is preserved: the sender cannot deny generating
@@ -1007,16 +1008,21 @@ collision resistance have different post-quantum security levels.
 #### 3.3.2 Shard Integrity (Second-Preimage Resistance)
 
 **Definition (SINT game).** The shard integrity game $\mathsf{Game}_{\mathcal{A}}^{\text{SINT}}$
-proceeds as follows:
+proceeds as follows. Per §2.1.1/§2.1.3, `ShardHash = H(encrypted_shard ‖ entity_id ‖
+shard_index)` is computed over the **AEAD ciphertext**, not the plaintext shard — the game
+below uses $c_i$ for that ciphertext accordingly, to avoid the ambiguity of an earlier version
+of this game that wrote $s_i$ for both the plaintext shard and the hashed value:
 
 ```
 Game SINT:
-  1. Challenger commits entity e with shards {s_0, ..., s_{n-1}}.
-  2. Adversary A receives entity_id, all shard hashes H(s_i ‖ entity_id ‖ i),
-     and the AEAD ciphertexts (as stored on commitment nodes).
-  3. A outputs (i, s_i') with s_i' ≠ s_i.
-  4. A wins if H(s_i' ‖ entity_id ‖ i) = H(s_i ‖ entity_id ‖ i)
-     AND the AEAD tag verifies.
+  1. Challenger commits entity e, producing encrypted shards {c_0, ..., c_{n-1}}
+     via AEAD_Encrypt(CEK, plaintext_shard_i, nonce_i) (§2.1.1).
+  2. Adversary A receives entity_id, all shard hashes H(c_i ‖ entity_id ‖ i)
+     (as published in the shard_map_root Merkle tree), and the ciphertexts
+     {c_0, ..., c_{n-1}} themselves (as stored on commitment nodes).
+  3. A outputs (i, c_i') with c_i' ≠ c_i.
+  4. A wins if H(c_i' ‖ entity_id ‖ i) = H(c_i ‖ entity_id ‖ i)
+     AND c_i' carries a valid AEAD authentication tag under CEK/nonce_i.
 ```
 
 **Theorem 4 (Shard Integrity).** For any PPT adversary $\mathcal{A}$:
@@ -1026,13 +1032,13 @@ $$\mathsf{Adv}^{\text{SINT}}_{\mathcal{A}}(\lambda) \leq \mathsf{Adv}^{\text{SPR
 where $\mathsf{Adv}^{\text{SPR}}_{H}$ is the second-preimage resistance advantage and
 $\mathsf{Adv}^{\text{AUTH}}_{\text{AEAD}}$ is the AEAD authentication advantage.
 
-*Proof.* Winning the SINT game requires the adversary to pass **both** checks simultaneously: the submitted $s_i'$ must produce a hash collision ($H(s_i' \| \text{entity\_id} \| i) = H(s_i \| \text{entity\_id} \| i)$, targeting SPR of $H$) **and** the corresponding AEAD ciphertext must carry a valid authentication tag (targeting AEAD authenticity). Let $E_1$ be the event that the adversary breaks SPR and $E_2$ be the event that it forges a valid AEAD tag. Since both conditions are required simultaneously, $\Pr[\text{win}] = \Pr[E_1 \cap E_2] \leq \min(\Pr[E_1], \Pr[E_2]) \leq \mathsf{Adv}^{\text{SPR}}_{H} + \mathsf{Adv}^{\text{AUTH}}_{\text{AEAD}}$. The sum bound is conservative but valid ($\min(a,b) \leq a + b$ for non-negative $a, b$); the actual advantage is more tightly bounded by $\min(\mathsf{Adv}^{\text{SPR}}_{H},\, \mathsf{Adv}^{\text{AUTH}}_{\text{AEAD}})$. ∎
+*Proof.* Winning the SINT game requires the adversary to pass **both** checks simultaneously: the submitted $c_i'$ must produce a hash collision ($H(c_i' \| \text{entity\_id} \| i) = H(c_i \| \text{entity\_id} \| i)$, targeting SPR of $H$ over the ciphertext) **and** $c_i'$ itself must carry a valid AEAD authentication tag (targeting AEAD authenticity — a property of the ciphertext, so no separate plaintext-side check is needed). Let $E_1$ be the event that the adversary breaks SPR and $E_2$ be the event that it forges a valid AEAD tag. Since both conditions are required simultaneously, $\Pr[\text{win}] = \Pr[E_1 \cap E_2] \leq \min(\Pr[E_1], \Pr[E_2]) \leq \mathsf{Adv}^{\text{SPR}}_{H} + \mathsf{Adv}^{\text{AUTH}}_{\text{AEAD}}$. The sum bound is conservative but valid ($\min(a,b) \leq a + b$ for non-negative $a, b$); the actual advantage is more tightly bounded by $\min(\mathsf{Adv}^{\text{SPR}}_{H},\, \mathsf{Adv}^{\text{AUTH}}_{\text{AEAD}})$. ∎
 
-**Note (double protection).** Content-addressing and AEAD authentication form two independent barriers. An adversary who breaks only one check does not win the SINT game — both must be defeated simultaneously. This makes the protocol resilient against adversaries who can break either primitive in isolation.
+**Note (double protection).** Content-addressing and AEAD authentication form two independent barriers over the same ciphertext. An adversary who breaks only one check does not win the SINT game — both must be defeated simultaneously. This makes the protocol resilient against adversaries who can break either primitive in isolation.
 
 #### 3.3.3 Transfer Confidentiality (IND-CPA)
 
-**ML-KEM-768 Security Parameters.** The sealed lattice key's confidentiality reduces to the Module-LWE problem with parameters (k=3, q=3329, η₁=2, η₂=2), achieving NIST Security Level 3 — equivalent to AES-192 against quantum adversaries. The IND-CCA2 property is obtained via the Fujisaki-Okamoto transform applied to an IND-CPA-secure K-PKE scheme [20] (FIPS 203 §4 [24]). The recent formal verification of Signal's PQXDH protocol [21] — the first machine-checked post-quantum security proof of a real-world protocol using CryptoVerif — identified a KEM binding property requirement: the KEM ciphertext must be bound to the *receiver's encapsulation key*. **LTP's current sealed-key construction does NOT discharge this property**: the sealed lattice key binds entity_id (derived from the sender's verification key) but contains no receiver key material, so the ciphertext is not bound to the receiver's encapsulation key. A 2026-08 Verifpal symbolic analysis of the protocol (`docs/formal/`) independently found the corresponding weakness: sealed lattice keys can be replayed across sessions, because the sealed key carries no freshness or receiver binding. The planned mitigation — scheduled for a future protocol revision — is to include the receiver encapsulation-key fingerprint and the entity_id in the AEAD associated data of the sealed key, closing both findings. This mirrors the guidance in HPKE [26], which binds additional identities into the context/AAD rather than relying on the KEM alone. Protocol-level binding is necessary rather than optional here: in the X-BIND taxonomy of Cremers, Dax, and Medinger [27], ML-KEM itself provides LEAK-BIND-K-CT and LEAK-BIND-K-PK but is **not** MAL-BIND-K-CT or MAL-BIND-K-PK [28] — a maliciously generated key pair can break ciphertext binding at the primitive level, so no choice of KEM parameters alone can discharge the obligation.
+**ML-KEM-768 Security Parameters.** The sealed lattice key's confidentiality reduces to the Module-LWE problem with parameters (k=3, q=3329, η₁=2, η₂=2), achieving NIST Security Level 3 — equivalent to AES-192 against quantum adversaries. The IND-CCA2 property is obtained via the Fujisaki-Okamoto transform applied to an IND-CPA-secure K-PKE scheme [20] (FIPS 203 §4 [24]). The recent formal verification of Signal's PQXDH protocol [21] — the first machine-checked post-quantum security proof of a real-world protocol using CryptoVerif — identified a KEM binding property requirement: the KEM ciphertext must be bound to the *receiver's encapsulation key*. **LTP's current sealed-key construction does NOT discharge this property**: the sealed lattice key binds entity_id (derived from the sender's verification key) but contains no receiver key material, so the ciphertext is not bound to the receiver's encapsulation key. A 2026-08 Verifpal symbolic analysis of the protocol (`docs/formal/`) independently found the corresponding weakness: sealed lattice keys can be replayed across sessions, because the sealed key carries no freshness or receiver binding. The planned mitigation — scheduled for a future protocol revision — is to include the receiver encapsulation-key fingerprint and the entity_id in the AEAD associated data of the sealed key, closing both findings. This mirrors the guidance in HPKE [26], which binds additional identities into the context/AAD rather than relying on the KEM alone. Protocol-level binding is necessary rather than optional here: in the X-BIND taxonomy of Cremers, Dax, and Medinger [27], ML-KEM itself provides LEAK-BIND-K-CT and LEAK-BIND-K-PK but is **not** MAL-BIND-K-CT or MAL-BIND-K-PK [28] — a maliciously generated key pair can break ciphertext binding at the primitive level, so no choice of KEM parameters alone can discharge the obligation. This is not a theoretical concern raised only by academic cryptographers: Signal's own ML-KEM Braid protocol specification [38] — a production post-quantum continuous key-agreement design, not merely a research proposal — independently flags the identical caveat for any KEM substituted into a ratcheting handshake, citing the same X-BIND taxonomy [27] this paper relies on. (Braid also chunks large ML-KEM ciphertexts using erasure codes, which invites a natural but incorrect comparison to LTP's use of erasure coding; the two are unrelated techniques solving different problems. Braid's codes provide reliable delivery of a single large message over a lossy point-to-point channel — the erasure-coded chunks are transient transport artifacts, reassembled and discarded once the message arrives. LTP's codes provide durable k-of-n storage across independent commitment nodes, where the encoded shards *are* the entity's only persistent representation. Sharing the keyword "erasure code" should not be read as sharing an architecture.)
 
 **Definition (TCONF game).** Transfer confidentiality is defined via an IND-CPA-style
 indistinguishability game adapted for LTP's commit-lattice-materialize structure:
@@ -1146,39 +1152,70 @@ signed record as unforgeable evidence of the transfer's existence.
 
 #### 3.3.5 Threshold Secrecy (Information-Theoretic)
 
-**Definition (TSEC game).** The threshold secrecy game
-$\mathsf{Game}_{\mathcal{A}}^{\text{TSEC}}$ proceeds as follows:
+**Definition (leakage setting).** Threshold secrecy is stated below as an entropy bound
+rather than an indistinguishability game. An indistinguishability game is the wrong tool for
+this construction: since the encoding below has no random blinding, *any* nonzero observation
+formally changes the adversary's posterior, so a "does the posterior differ from the prior"
+win condition is trivially always won and cannot support a useful $\mathsf{Adv} = 0$ claim.
+The meaningful question is *how much* information leaks, and that is what the entropy bound
+below answers precisely.
 
 ```
-Game TSEC:
-  1. Challenger picks a uniformly random entity e from the entity space.
-  2. Challenger erasure-encodes e into n shards {s_0, ..., s_{n-1}}.
-  3. Adversary A (computationally unbounded) receives any t < k shards of
-     her choice (adaptive or non-adaptive). A has no prior knowledge of e.
-  4. A outputs any function of the observed shards.
-  5. A wins if her output reveals any information about e beyond the prior
-     distribution (i.e., if the posterior distribution of e differs from
-     the prior).
+Setting: Challenger picks a uniformly random entity e and erasure-encodes it into
+n shards. Per byte position, the k coefficients (c_0, ..., c_{k-1}) forming the
+degree-(k-1) polynomial are i.i.d. uniform over GF(256). Adversary A (computationally
+unbounded, including quantum) observes any t < k shards of her choice. A has no
+prior knowledge of e.
 ```
 
-**Theorem 7 (Threshold Secrecy — MDS Secrecy).** For any adversary $\mathcal{A}$ (computationally unbounded, including quantum), observing any $t < k$ shards of a uniformly random entity $e$:
+**Theorem 7 (Threshold Secrecy — Entropy Bound).** For any $t < k$ shards observed at
+evaluation points $T \subset \{1, \ldots, n\}$, $|T| = t$, and any fixed observed values
+$y_T$, exactly $256^{k-t}$ coefficient vectors $(c_0, \ldots, c_{k-1}) \in \mathrm{GF}(256)^k$
+are consistent with $y_T$, each equally likely under the posterior. Equivalently, per byte
+position:
 
-$$\Pr[M = e \mid \text{any } t < k \text{ shards}] = \Pr[M = e]$$
+$$H(e \mid t \text{ shards}) = (k - t) \cdot \log_2 256 \text{ bits}, \qquad H(e) = k \cdot \log_2 256 \text{ bits}$$
 
-The conditional distribution of $e$ given any $t < k$ observed shards is identical to its prior distribution. Equivalently, $\mathsf{Adv}^{\text{TSEC}}_{\mathcal{A}} = 0$.
+so observing $t$ shards leaks **exactly $t \cdot \log_2 256$ bits** of the $k \cdot \log_2 256$-bit
+joint entropy per byte position — no more, and (by the equal likelihood of the surviving
+$256^{k-t}$ candidates) no less: the observation narrows the candidate set but provides no
+further ability to distinguish among the survivors.
 
 *Proof.* The Vandermonde encoding evaluates a degree-$(k-1)$ polynomial $p(x) = \sum_{j=0}^{k-1} c_j x^j$
-over GF(256) at $n$ distinct non-zero points ($\alpha_i = i + 1$ in the v1 parameter set). Any $t < k$ evaluations leave $k - t \geq 1$ degrees
-of freedom. Formally: for any set $T$ of $t < k$ evaluation points and any observed values
-at those points, exactly $256^{k-t}$ polynomials of degree at most $k - 1$ are consistent
-with those evaluations. Since the entity $e$ is the coefficient vector $(c_0, \ldots, c_{k-1})$
-drawn uniformly at random, and the number of consistent polynomials is the same regardless of
-the true $e$, every candidate entity is equally consistent with the observed shards. The
-posterior distribution of $e$ is therefore identical to the prior, giving $\mathsf{Adv}^{\text{TSEC}}_{\mathcal{A}} = 0$.
-This is the **MDS (Maximum Distance Separable) secrecy property** of Reed-Solomon codes —
-it holds against adversaries with unlimited computational power, including quantum computers. ∎
+over GF(256) at $n$ distinct non-zero points ($\alpha_i = i + 1$ in the v1 parameter set). Any
+$t < k$ evaluations leave $k - t \geq 1$ degrees of freedom: exactly $256^{k-t}$ polynomials of
+degree at most $k - 1$ are consistent with the $t$ observed values. Since $(c_0, \ldots,
+c_{k-1})$ is drawn uniformly over $\mathrm{GF}(256)^k$ and each of the $256^{k-t}$ consistent
+vectors was equally likely a priori, Bayes' rule assigns each of them posterior probability
+$256^{-(k-t)}$ and every other vector posterior probability $0$. The entropy identity above
+follows directly. ∎
 
-**Note on chosen-message distinguishing.** The TSEC game is stated for an adversary without
+**Correction from an earlier version of this theorem.** A prior revision of this document
+stated $\mathsf{Adv}^{\text{TSEC}}_{\mathcal{A}} = 0$ — zero information leakage — for any
+$t < k$ shards. That claim was **incorrect**, and is corrected here rather than silently
+dropped. It conflated the MDS property this proof actually establishes (the *count* of
+consistent coefficient vectors, $256^{k-t}$, is independent of which vector is the true one)
+with Shamir-style perfect secret sharing, which requires additional structure this construction
+does not have: a single designated coefficient carrying the message (canonically $p(0)$), the
+remaining $k - 1$ coefficients drawn as independent blinding randomness rather than payload,
+and evaluation points that exclude the designated coordinate. LTP's erasure code has none of
+that — all $k$ coefficients are entity content, and there is no blinding randomness — so it
+inherits the counting argument but not the zero-leakage conclusion. Concretely, on the paper's
+own $k=2$ worked example (§2.1.1): observing one shard reduces the $256^2 = 65{,}536$ equally
+likely $(c_0, c_1)$ pairs to exactly $256$, an $8$-bit reduction per byte position — not zero
+information.
+
+**Practical consequence at $t = k - 1$.** At the threshold's edge, only $256^{k-t} = 256$
+coefficient values remain possible per byte position. That is small enough that structural
+redundancy in real content — ASCII text, common file-format headers, predictable field
+layouts — may let an adversary who has *also* obtained the CEK (see below) recover the true
+content with modest additional work, well short of the full $256^k$ brute force the raw entropy
+count might suggest. **This sharpens, rather than loosens, the §3.3.3 rule that guessable or
+structured entities MUST use ZK mode:** the MDS layer's protection degrades sharply as $t$
+approaches $k$, and offers no protection at all once the adversary also holds the CEK and is
+one shard short of reconstruction.
+
+**Note on chosen-message distinguishing.** The setting above assumes an adversary without
 prior knowledge of $e$ — the case that arises in practice when an attacker compromises fewer
 than $k$ commitment nodes but does not know what was committed. An adversary who already knows
 the set of candidate entities can distinguish trivially: since the Vandermonde encoding is
@@ -1186,16 +1223,25 @@ deterministic, computing the expected shard for each candidate and comparing aga
 observed shard identifies the encoding with certainty. This is not a weakness of the
 construction — it is intentional. The protocol relies on **AEAD encryption (Layer 4)** as the
 primary confidentiality guarantee against adversaries who may know or guess candidate entities.
-The MDS threshold secrecy property provides a second line of defense for the specific case
-where an adversary has obtained the CEK but controls fewer than $k$ commitment nodes.
+The MDS entropy bound above provides a partial, secondary defense for the specific case where
+an adversary has obtained the CEK but controls fewer than $k$ commitment nodes — it is not,
+and should not be relied upon as, an independent unconditional secrecy layer.
 
-**Formal basis.** The threshold secrecy of LTP's erasure coding follows from the MDS (Maximum Distance Separable) property of Reed-Solomon codes over GF(2⁸), first connected to secret sharing by McEliece and Sarwate [22]. For a uniformly random (high-min-entropy) entity, any k−1 shards leave exactly one degree of freedom in the polynomial coefficient space, revealing zero information about the entity content in the Shannon sense. This information-theoretic guarantee holds regardless of the adversary's computational power, including against quantum adversaries — but, per the note above, only for content the adversary cannot guess or enumerate; for guessable content the deterministic encoding is trivially distinguishable and AEAD encryption (or ZK mode) is the operative protection.
+**Formal basis.** McEliece and Sarwate [22] showed that Shamir's secret-sharing scheme is
+itself a Reed-Solomon code with the secret placed at an evaluation point excluded from the
+share set and the remaining coefficients drawn as independent blinding randomness — that
+specific structure, not the MDS property alone, is what gives Shamir's scheme its
+information-theoretic zero-leakage guarantee. LTP's erasure coding shares the field and the
+Vandermonde evaluation structure but has no designated secret coordinate and no blinding
+randomness, so it inherits the counting argument above but not Shamir's zero-leakage property.
 
 **In LTP's context:** Even if an adversary compromises $k - 1$ commitment nodes and decrypts
-the AEAD ciphertexts (by also obtaining the CEK) without prior knowledge of the entity,
-the $k - 1$ plaintext shards reveal zero information about the entity. This information-theoretic
-guarantee is unconditional — it holds against quantum computers — and provides defense in
-depth behind AEAD encryption.
+the AEAD ciphertexts (by also obtaining the CEK), the $k - 1$ plaintext shards leak exactly
+$(k-1) \cdot \log_2 256$ of the $k \cdot \log_2 256$ bits of joint entropy per byte position —
+one symbol's worth of uncertainty short of full reconstruction, not zero information. This is
+why AEAD encryption (Layer 4), not the erasure-coding layer, is the protocol's primary
+confidentiality guarantee: the MDS structure alone is a partial, defense-in-depth measure, not
+an unconditional secrecy layer.
 
 #### 3.3.6 Transfer Immutability (Composite Game)
 
@@ -1216,12 +1262,57 @@ Game TIMM:
   6. A wins if R outputs e' with e' ≠ e (receiver accepts wrong data).
 ```
 
-**Theorem 8 (Transfer Immutability).** For any PPT adversary $\mathcal{A}$:
+**A fourth attack path the four-barrier bound does not cover.** Step 4 grants A the ability
+to modify the sealed key in transit — and A can win using that power alone, without breaking
+any of the four primitives below. Let $e'' \neq e$ be a *different* entity, honestly committed
+by *any* sender (including A itself acting under its own, genuinely valid signing key — the
+game does not forbid A from running an honest COMMIT/LATTICE for its own content). Because
+ML-KEM encapsulation is a public-key operation, A can compute a fresh, perfectly valid
+ciphertext encapsulating $e''$'s real CEK to receiver R's real public key — no IND-CCA2 break
+required, since A legitimately knows the plaintext it is encapsulating. A then delivers this
+self-crafted sealed key to R in place of the sealed key for $e$ (permitted by step 4). R
+decapsulates it successfully — it is a genuine, honestly-formed ML-KEM ciphertext — and
+materializes $e''$. Every check the base protocol runs passes: $H(e'')$ matches $e''$'s own
+commitment (no CR break), $e''$'s record carries a genuine EUF-CMA-valid signature (no forgery),
+$e''$'s shards carry valid AEAD tags for $e''$'s own content (no AUTH break), and the sealed
+key decapsulates correctly under IND-CCA2 (no confidentiality break). Yet R outputs
+$e'' \neq e$ — A wins TIMM while defeating none of CR, EUF-CMA, AEAD AUTH, or ML-KEM IND-CCA2.
+
+The root cause is that nothing in the base protocol binds a sealed key to the *specific*
+commitment record it is meant to unlock: the sealed key's AEAD associated data carries the
+entity_id derived from the sender's verification key (§3.3.3), but the receiver has no
+independent, authenticated expectation of *which* entity_id it should be receiving, so a
+different, honestly-valid entity_id is indistinguishable from the right one. This is the same
+missing binding that the Verifpal symbolic analysis in §3.3.8 flags independently as
+cross-session sealed-key replay (`authentication? sealed_key` fails) and that §3.3.3 already
+discloses as an unaddressed KEM ciphertext-binding gap: the sealed key binds the sender's
+identity but no receiver or session material. All three findings — this reduction gap, the
+§3.3.3 binding gap, and the §3.3.8 replay failure — are one underlying weakness observed from
+three different angles, not three separate problems.
+
+**Theorem 8 (Transfer Immutability, conditional).** For any PPT adversary $\mathcal{A}$,
+*provided the receiver enforces expected-identity binding* — R accepts a delivered commitment
+record and sealed key only if they match an expected sender verification key and/or entity_id
+that R obtained through an authenticated channel outside the protocol run being attacked (e.g.,
+pinned in advance, or confirmed out-of-band) — then:
 
 $$\mathsf{Adv}^{\text{TIMM}}_{\mathcal{A}}(\lambda) \leq \mathsf{Adv}^{\text{CR}}_{H}(\lambda) + \mathsf{Adv}^{\text{EUF-CMA}}_{\text{ML-DSA}}(\lambda) + \mathsf{Adv}^{\text{AUTH}}_{\text{AEAD}}(\lambda) + \mathsf{Adv}^{\text{IND-CCA}}_{\text{ML-KEM}}(\lambda)$$
 
-*Proof.* Viable attack paths against the TIMM game require breaking *multiple* barriers
-simultaneously. The principal attack paths are:
+Without this hypothesis the bound does not hold: the attack path above lets
+$\mathsf{Adv}^{\text{TIMM}}_{\mathcal{A}}(\lambda) = 1$ for a computationally trivial
+$\mathcal{A}$, since it requires no cryptographic break at all. The base LTP specification as
+described in §2 does not itself mandate expected-identity binding at the receiver; it is a
+receiver-side obligation this theorem now makes an explicit precondition, matching the planned
+protocol-revision mitigation tracked in §3.3.3 and §3.3.8 (receiver encapsulation-key
+fingerprint and entity_id in the sealed key's AEAD associated data, plus a freshness
+component) — that fix, once shipped, would let the receiver enforce this binding
+*within* the protocol rather than as an external assumption.
+
+*Proof.* Under the added hypothesis, the attack path above is excluded by construction: R
+rejects any delivered record/sealed-key pair whose identity does not match its authenticated
+expectation, regardless of how validly formed that pair is. The remaining viable attack paths
+against the TIMM game require breaking *multiple* barriers simultaneously. The principal such
+paths are:
 
 - **Path A (shard substitution):** Substitute AEAD ciphertexts (breaking AEAD AUTH) **and**
   find $e'$ with $H(e') = H(e)$ that passes the final integrity check (breaking CR).
@@ -1234,21 +1325,27 @@ simultaneously. The principal attack paths are:
   (breaking ML-KEM IND-CCA) **and** substitute entity content that passes the hash check
   (breaking CR).
 
-Each path's success probability is a *product* of two or more barrier advantages, which is
-dominated by the largest single-barrier advantage in the product. Since each path requires
-at least one of the four barrier advantages, the union bound over the individual barrier
-advantages remains valid:
+Each path requires the adversary to win **both** of its two constituent events simultaneously;
+writing $E_1, E_2$ for a given path's two events, $\Pr[\text{path succeeds}] = \Pr[E_1 \cap E_2]
+\leq \min(\Pr[E_1], \Pr[E_2])$, so each path's success probability is dominated by the
+*smaller* of its two barrier advantages, not the larger one. Since winning via any path
+requires at least one of the four barrier advantages, the union bound over the individual
+barrier advantages remains valid as a (conservative) upper bound:
 
 $$\mathsf{Adv}^{\text{TIMM}} \leq \mathsf{Adv}^{\text{CR}}_{H} + \mathsf{Adv}^{\text{EUF-CMA}}_{\text{ML-DSA}} + \mathsf{Adv}^{\text{AUTH}}_{\text{AEAD}} + \mathsf{Adv}^{\text{IND-CCA}}_{\text{ML-KEM}}$$
 
-This sum bound is conservative — the multi-barrier composition means the protocol's actual
-security is stronger than any single component. ∎
+This sum bound is conservative — the two-barrier composition of each path means the protocol's
+actual security against Paths A–C is stronger than any single component. ∎
 
-**This is LTP's strongest security theorem.** It is a composite reduction that chains four
-standard cryptographic assumptions. Under NIST Level 3 security (ML-KEM-768 + ML-DSA-65
-+ BLAKE3-256), ML-KEM and ML-DSA each provide $\geq 128$ bits of post-quantum security,
-while BLAKE3-256 provides ~85-bit post-quantum collision resistance (BHT bound) and
-128-bit post-quantum preimage resistance (Grover bound).
+**Status.** This is LTP's most demanding composite reduction, but — unlike Theorems 3–7 — it
+is not unconditional: it holds only once the receiver enforces expected-identity binding, a
+property the current specification assumes rather than mechanically enforces. Under that
+hypothesis, it chains four standard cryptographic assumptions. Under NIST Level 3 security
+(ML-KEM-768 + ML-DSA-65 + BLAKE3-256), ML-KEM and ML-DSA each provide $\geq 128$ bits of
+post-quantum security, while BLAKE3-256 provides ~85-bit post-quantum collision resistance
+(BHT bound) and 128-bit post-quantum preimage resistance (Grover bound). Closing the gap
+without relying on an external hypothesis — by binding the sealed key to its commitment record
+inside the protocol itself — is the same open item tracked in §3.3.3 and §3.3.8, not a new one.
 
 #### 3.3.7 What Cannot Be Formally Proven
 
@@ -1367,11 +1464,16 @@ A critical distinction that protocols often conflate:
 | **Availability** | Committed data *can* be reconstructed | CONDITIONAL — requires ≥ $k$ shard indices with ≥ 1 live replica each (see §5.4) |
 
 **Corollary (Immutability — informal restatement of Theorems 3 and 8, §3.3).** Let $E$ be an
-entity committed with EntityID $= H(E)$. Any content $E'$ produced by the MATERIALIZE phase
-satisfies $E' = E$, or the integrity check fails and the receiver obtains nothing. There is
-no intermediate state where the receiver accepts incorrect data. *(Full formal proof:
-Theorem 3 via collision resistance of $H$; Theorem 8 via the four-barrier composite reduction.
-Both in §3.3.)*
+entity committed with EntityID $= H(E)$. If the receiver's MATERIALIZE run decodes shards for
+EntityID $H(E)$ at all, the recovered content $E'$ satisfies $E' = E$, or the integrity check
+fails and the receiver obtains nothing — this half holds unconditionally (Theorem 3). Whether
+the receiver is decoding EntityID $H(E)$ in the first place — as opposed to a different,
+honestly-committed entity whose sealed key was substituted in transit — additionally requires
+the receiver to enforce expected-identity binding (Theorem 8, §3.3.6); absent that, a network
+adversary can redirect the receiver onto a different, honestly-committed entity without
+breaking any of the four primitives Theorem 8 reduces to. *(Full formal proof: Theorem 3 via
+collision resistance of $H$; Theorem 8, conditional on expected-identity binding, via the
+four-barrier composite reduction. Both in §3.3.)*
 
 **Remark (Availability Boundary).** Let $A_i$ denote the event that shard index $i$ has
 at least one available replica. The entity is reconstructable if and only if
@@ -2541,6 +2643,8 @@ framing in §8.7.
 
 [37] M. Hall-Andersen, M. Simkin, B. Wagner, "Foundations of Data Availability Sampling," IACR ePrint 2023/1079. https://eprint.iacr.org/2023/1079
 
+[38] R. Schmidt, "The ML-KEM Braid Protocol," Signal, Revision 1, 2025-02-21 (last updated 2025-09-26). https://signal.org/docs/specifications/mlkembraid/mlkembraid.pdf
+
 ---
 
 ## 9. Use Cases
@@ -2705,7 +2809,8 @@ sufficiently large receiver population (break-even: $N > \rho$).
 | 0.1.0-draft | 2026-02-24 | Initial draft; reviewed by external review rounds 001–003 (formal + mathematical) and 004 (research landscape), `docs/security/audits/external/whitepaper-reviews/`. |
 | 0.1.0-draft (rev) | 2026-03-29 | Post-review corrections: test-vector arithmetic, BHT collision bound (~85-bit), cost-model expansion factor ρ = nr/k, nonce-derivation invariant, TCONF log binding, ZK-mode specification, theorem-numbering note. |
 | 0.2.0 | 2026-08-17 | Publication revision: threshold-secrecy claims conditioned per §3.3.5 throughout; erasure-coding spec re-baselined to the reference implementation (consecutive evaluation points, length-prefix framing) with regenerated test vectors — the evaluation points were re-baselined from the unimplemented powers-of-α scheme to the implemented consecutive-points scheme (α_i = i+1), test vectors regenerated from the reference implementation, superseding the §2.1.1 arithmetic checked in review rounds 001–002; the `encoding_params` `eval` label string is retained verbatim for record-hash compatibility; commitment-record size corrected; KEM-binding claim corrected to a disclosed limitation with planned mitigation; normative conflicts resolved (low-entropy × quantum threat model; extension registry created; log hash primitive unified on BLAKE3-256); disclosure paragraphs for deferred wire formats, hybrid KEM, regulatory posture, forward-secrecy caveats, key-rotation gap; machine-checked verification status section added (§3.3.8) covering the 52 Lean 4 theorems — including both §2.1.1 test vectors recomputed inside the Lean kernel — and the first recorded Verifpal run (2 confidentiality queries verified, 2 authentication replay findings disclosed with planned mitigation); literature positioning updated per the 2026-08-16 research round (X-BIND KEM-binding taxonomy, NIST IR 8547 transition posture, XChaCha20-Poly1305 standardization status); bibliography unified into a single consistent numbered style (37 references, every in-text citation resolves to exactly one entry and vice versa — previously three incompatible citation conventions coexisted and two citations, Cremers–Dax–Medinger and Schmieg, were referenced in §3.3 but absent from every reference list); FIPS 203/204, RFC 9180, NIST IR 8547, and X-Wing given first-class bibliography entries; new §8.9 positions LTP's corridor quorum against Data Availability Sampling (Al-Bassam et al., Danksharding, Hall-Andersen–Simkin–Wagner); §8.4 adds Signal's Sealed Sender as the closest KEM-bound-envelope precedent, and §8.7's constant-size-capability contribution claim is rescoped accordingly to the specific bundle rather than the underlying primitive; missing §8.8 TOC entry restored. |
+| 0.2.1 | 2026-08-19 | Independent mathematical audit of §3.3 fixed two unsound proofs. Theorem 7 (§3.3.5, Threshold Secrecy) previously claimed zero information leakage from *t* < *k* shards via an indistinguishability game; corrected to a proportional entropy-leakage bound (*t* · log₂ 256 bits per byte position) with the correct attribution to Shamir-style blinded secret sharing (McEliece–Sarwate) rather than plain MDS coding, plus a new "practical consequence at *t* = *k*−1" discussion — propagated to the Overview and §3.1 Threat Analysis tables. Theorem 8 (§3.3.6, Transfer Immutability) previously bounded the game by four cryptographic advantages with no proof path covering an adversary who exploits step 4's "modify the sealed key in transit" grant to redirect a receiver onto a different, honestly-committed entity — an attack requiring no break of CR, EUF-CMA, AEAD AUTH, or ML-KEM IND-CCA2; the theorem is now conditioned on the receiver enforcing expected-identity binding (explicitly cross-referenced to the matching KEM-binding gap already disclosed in §3.3.3 and the sealed-key replay failure in §3.3.8's Verifpal results — one underlying weakness, not three), with the proof's "dominated by the largest" phrasing corrected to match the min(Pr[E₁],Pr[E₂]) reasoning used in Theorem 4, and the "strongest security theorem" framing softened accordingly. §3.3.2 (Theorem 4, Shard Integrity) game notation corrected: `s_i` renamed to `c_i` to make explicit that `ShardHash` is computed over the AEAD ciphertext per §2.1.1/§2.1.3, not the plaintext shard, removing a definitional ambiguity between the game and the wire format. |
 
 ---
 
-*LTP v0.2.0 — Lattice Transfer Protocol*
+*LTP v0.2.1 — Lattice Transfer Protocol*
