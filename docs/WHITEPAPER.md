@@ -13,7 +13,7 @@
 
 | **Author** | **Version** | **Date** | **Status** | **Classification** |
 |:----------:|:-----------:|:--------:|:----------:|:------------------:|
-| Jas Strokus | 0.2.0 | 2026-08-17 | Public Draft — Request for Comments | Public |
+| Tsolmondorj Natsagdorj | 0.2.0 | 2026-08-17 | Public Draft — Request for Comments | Public |
 
 </div>
 
