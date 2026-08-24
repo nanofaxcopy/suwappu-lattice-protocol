@@ -32,6 +32,8 @@
 * [Commitment Network Options](design-decisions/COMMITMENT_NETWORK_OPTIONS.md)
 * [On-Chain PQ Verification (EIP/ERC Strategy)](design-decisions/PQ_ONCHAIN_VERIFICATION.md)
 * [Standards Work](eips/README.md)
+* [Deferred-Token Architecture](economics/DEFERRED_TOKEN_ARCHITECTURE.md)
+* [Validator Compute Incentives](economics/VALIDATOR_COMPUTE_INCENTIVES.md)
 
 ## Reference
 

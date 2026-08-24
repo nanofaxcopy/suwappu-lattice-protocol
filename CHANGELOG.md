@@ -12,6 +12,19 @@ public-surface promise and the cross-version compatibility matrix.
 ## [Unreleased]
 
 ### Added
+- Validator compute incentives (`src/ltp/incentives.py`, private surface —
+  not yet re-exported from `ltp.__init__`): stablecoin-denominated
+  implementation of the whitepaper §5.5 interfaces (`NodeIncentive`,
+  `CommitmentPricing`, `AdmissionControl`) per the deferred-token
+  architecture — proof-gated pay (zero passed audits earn zero), a
+  solvency-enforced `StablecoinLedger` (no minting; underfunded epochs
+  settle pro-rata and carry claims), stablecoin operator bonds with
+  progressive slashing into the insurance pool, and fee splits with the
+  burn share redirected to treasury. Design doc:
+  `docs/economics/VALIDATOR_COMPUTE_INCENTIVES.md` (also closes the §4
+  open question in `docs/economics/DEFERRED_TOKEN_ARCHITECTURE.md`);
+  chain-side counterpart lands in `suwappu-dag`
+  (`suwappu-precompiles::rewards`)
 - Quality-parity pass (cross-repo bar set by suwappubot):
   `scripts/verify.sh` single verification entrypoint with lanes
   (lint / semgrep / python / fast / contracts / secaudit / docs / all);

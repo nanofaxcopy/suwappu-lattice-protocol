@@ -92,6 +92,10 @@ them from.
 - Does not resolve the mechanics of "how does bonded stablecoin collateral convert into
   chain consensus rights" in code. That's the next design question, once the bridge is
   live and there's real bonded capital to reason about — not before.
+  *(Follow-up: that design now exists — see
+  [`VALIDATOR_COMPUTE_INCENTIVES.md`](VALIDATOR_COMPUTE_INCENTIVES.md), which specifies
+  the compute → proofs → stablecoin-payout loop and its first implementation on both
+  the LTP and suwappu-dag sides.)*
 
 ## 5. Summary
 
