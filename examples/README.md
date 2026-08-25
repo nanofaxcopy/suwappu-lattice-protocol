@@ -68,6 +68,7 @@ print(proto.materialize(sealed, bob))  # b'Hello ETP!'
 | [merkle_proofs.py](merkle_proofs.py) | 70 | Append-only log, inclusion proofs, signed tree heads |
 | [streaming.py](streaming.py) | 75 | Chunked large entity transfer with backpressure |
 | [bridge_transfer.py](bridge_transfer.py) | 82 | L1 → L2 cross-chain transfer with PQ-secure relay |
+| [inference_marketplace.py](inference_marketplace.py) | 131 | Full inference-market loop over live HTTP: deposit → metered completion → PQ-audited bill → provider payout |
 
 ## Running
 

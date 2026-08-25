@@ -336,7 +336,7 @@ def make_receipt_log():
     from src.ltp.merkle_log import MerkleLog
 
     keypair = KeyPair.generate("receipt-log-test")
-    return ReceiptCommitmentLog(MerkleLog(keypair.vk, keypair.sk))
+    return ReceiptCommitmentLog(MerkleLog(keypair.vk, keypair))
 
 
 class TestReceiptCommitment:

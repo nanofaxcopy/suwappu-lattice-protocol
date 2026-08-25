@@ -103,11 +103,33 @@ Anchoring the log's STHs on-chain rides the existing anchor pipeline
 (`AnchorScheduler` already anchors Merkle roots), which closes the loop
 to a fully on-chain-auditable bill.
 
-## 6. What this does NOT solve yet
+## 6. Running it
 
-- **The bridge-to-ledger deposit pipeline.** `customer_deposit` is the
-  ledger-side credit; watching bridge transfers and crediting the right
-  customer is the ops wiring that remains.
+`ltp.inference_service.build_inference_service` composes the whole
+marketplace — ledger, market, receipt log (STHs signed through the
+node's ML-DSA keypair, HSM-safe per LTP-A-032), deposit watcher, epoch
+settlement, gateway — into one object with `start()/stop()`;
+`InferenceServiceConfig.from_env` reads `SUWAPPU_INFER_*` so it boots
+identically under Docker or a shell. The model plugs in as a backend:
+`openai_compatible_backend(url)` fronts the deployment's own runtime
+(vLLM, TGI, llama.cpp server) and bills on the runtime's own `usage`
+counts; `echo_backend()` serves dev. Bridged deposits credit through
+`ltp.bridge_deposits.DepositWatcher`: idempotent per tx hash,
+confirmation-gated (reorg exposure bounded by depth), and
+attribution-explicit — deposits from unbound addresses are quarantined
+for operations, never guessed into an account. The end-to-end loop —
+deposit → completion over real HTTP → committed bill → audit proof
+verifying → epoch payout → solvency — runs as
+`examples/inference_marketplace.py` and as an integration test
+(`tests/test_inference_service.py`), including under the implicit-HSM
+production posture the unit-test conftest normally disables.
+
+## 7. What this does NOT solve yet
+
+- **The chain-event adapter.** `DepositWatcher` owns the crediting
+  rules; the production event source that reads
+  `BridgeEmitter.BridgeTransfer` logs and yields `DepositEvent`s is
+  deployment wiring against the live chain client.
 - **Receipt-log STH anchoring config.** The commitment log publishes
   signed heads; pointing the deployment's `AnchorScheduler` at it is
   deployment wiring, not new mechanism.
@@ -117,10 +139,12 @@ to a fully on-chain-auditable bill.
   why receipts carry `node_id` from day one.
 - **The model itself.** This is the pipe and the till, not the weights.
 
-## 7. Reading order
+## 8. Reading order
 
 1. `DEFERRED_TOKEN_ARCHITECTURE.md` — why stablecoin-native
 2. `VALIDATOR_COMPUTE_INCENTIVES.md` — the supply side (proof-gated pay)
 3. This document — the demand side (metered inference revenue)
 4. `src/ltp/inference.py` + `tests/test_inference.py`
 5. `src/ltp/gateway/routers/inference.py` + `tests/test_gateway_inference.py`
+6. `src/ltp/inference_service.py` + `examples/inference_marketplace.py` —
+   the composed, runnable marketplace

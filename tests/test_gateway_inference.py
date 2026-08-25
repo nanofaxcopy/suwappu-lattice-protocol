@@ -217,7 +217,7 @@ class TestReceiptCommitmentWiring:
         from src.ltp.merkle_log import MerkleLog
 
         keypair = KeyPair.generate("gw-receipt-test")
-        receipt_log = ReceiptCommitmentLog(MerkleLog(keypair.vk, keypair.sk))
+        receipt_log = ReceiptCommitmentLog(MerkleLog(keypair.vk, keypair))
         ledger = StablecoinLedger(IncentiveConfig())
         market = InferenceMarket(ledger, receipt_verifier=receipt_log.verifier())
         market.register_model(

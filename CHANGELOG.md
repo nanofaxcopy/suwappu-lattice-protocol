@@ -12,6 +12,22 @@ public-surface promise and the cross-version compatibility matrix.
 ## [Unreleased]
 
 ### Added
+- Runnable inference marketplace: `ltp.inference_service` composes the
+  whole stack (ledger, market, HSM-safe receipt log per LTP-A-032,
+  deposit watcher, epoch settlement, gateway) into one
+  `build_inference_service()` with env-driven config
+  (`SUWAPPU_INFER_*`) and pluggable model backends —
+  `openai_compatible_backend` fronts the deployment's own runtime
+  (vLLM/TGI/llama.cpp) and bills on the runtime's `usage` counts.
+  `ltp.bridge_deposits.DepositWatcher` closes the money-in link:
+  idempotent-per-tx, confirmation-gated, attribution-explicit crediting
+  of bridged stablecoins into customer balances (unbound senders
+  quarantined, never guessed). `examples/inference_marketplace.py`
+  runs the full loop live — deposit → completion over real HTTP →
+  committed bill → verified audit proof → provider payout → solvency —
+  and `tests/test_inference_service.py` pins it as an integration
+  test, including under the implicit-HSM production posture the test
+  conftest normally disables
 - Committed inference receipts: `ReceiptCommitmentLog` commits every
   bill's canonical, domain-separated receipt (new
   `DOMAIN_INFERENCE_RECEIPT` tag) into the CT-style `MerkleLog` with an
