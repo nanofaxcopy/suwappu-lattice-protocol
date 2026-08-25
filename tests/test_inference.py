@@ -16,6 +16,9 @@ Covers:
   - Prepaid customer accounts: deposit/balance/debit/refund on the
     ledger with solvency intact; settle_prepaid debiting the quote,
     InsufficientBalance leaving everything untouched and retryable
+  - Receipt commitment: canonical leaf determinism, commit + STH,
+    verifier gating settlement (uncommitted/tampered refused), audit
+    proof bundle verifying against the signed tree head
   - Introspection totals (settled_count, revenue, tokens)
 """
 
@@ -320,3 +323,103 @@ class TestPrepaidSettlement:
         snapshot = StableNodeIncentive(ledger).settle_epoch(1)
         assert snapshot.payouts["gpu-1"] == settlement.provider_claim_micro
         assert ledger.check_solvency()
+
+
+# ---------------------------------------------------------------------------
+# Receipt commitment log
+# ---------------------------------------------------------------------------
+
+
+def make_receipt_log():
+    from src.ltp.inference import ReceiptCommitmentLog
+    from src.ltp.keypair import KeyPair
+    from src.ltp.merkle_log import MerkleLog
+
+    keypair = KeyPair.generate("receipt-log-test")
+    return ReceiptCommitmentLog(MerkleLog(keypair.vk, keypair.sk))
+
+
+class TestReceiptCommitment:
+    def test_canonical_bytes_deterministic_and_field_sensitive(self):
+        from src.ltp.inference import receipt_canonical_bytes
+
+        a = receipt_canonical_bytes(make_receipt())
+        b = receipt_canonical_bytes(make_receipt())
+        assert a == b
+        c = receipt_canonical_bytes(make_receipt(output_tokens=501))
+        assert c != a
+
+    def test_commit_and_verify(self):
+        log = make_receipt_log()
+        receipt = make_receipt()
+        index = log.commit(receipt)
+        assert index == 0
+        assert log.leaf_index("req-1") == 0
+        assert log.is_committed(receipt)
+        # A byte-identical reconstruction verifies too.
+        assert log.verifier()(make_receipt())
+
+    def test_tampered_receipt_fails_verification(self):
+        log = make_receipt_log()
+        log.commit(make_receipt())
+        # Same request_id, different metering: must not verify.
+        assert not log.is_committed(make_receipt(output_tokens=999))
+
+    def test_uncommitted_receipt_fails_verification(self):
+        log = make_receipt_log()
+        assert not log.is_committed(make_receipt())
+
+    def test_double_commit_rejected(self):
+        log = make_receipt_log()
+        log.commit(make_receipt())
+        with pytest.raises(InferenceError):
+            log.commit(make_receipt())
+
+    def test_verifier_gates_market_settlement(self):
+        log = make_receipt_log()
+        market = make_market(receipt_verifier=log.verifier())
+        due = market.quote("suwappu-1", 1_000, 500)
+        # Uncommitted: refused.
+        with pytest.raises(InferenceError):
+            market.settle(make_receipt(), due)
+        # Committed: settles.
+        log.commit(make_receipt())
+        market.settle(make_receipt(), due)
+
+    def test_proof_bundle_verifies_against_signed_sth(self):
+        from src.ltp.merkle_log.proof import InclusionProof
+        from src.ltp.merkle_log.sth import SignedTreeHead
+
+        log = make_receipt_log()
+        log.commit(make_receipt("req-a"))
+        log.commit(make_receipt("req-b", node_id="gpu-2"))
+        bundle = log.proof("req-b")
+
+        # (a) The STH signature verifies (ML-DSA-65).
+        sth = SignedTreeHead(
+            sequence=bundle["sth"]["sequence"],
+            tree_size=bundle["sth"]["tree_size"],
+            timestamp=bundle["sth"]["timestamp"],
+            root_hash=bytes.fromhex(bundle["sth"]["root_hash"]),
+            operator_vk=bytes.fromhex(bundle["sth"]["operator_vk"]),
+            signature=bytes.fromhex(bundle["sth"]["signature"]),
+        )
+        assert sth.verify()
+
+        # (b) The record's inclusion proof verifies against the STH root.
+        proof = InclusionProof(
+            leaf_index=bundle["leaf_index"],
+            tree_size=bundle["tree_size"],
+            audit_path=[bytes.fromhex(h) for h in bundle["audit_path"]],
+            root_hash=bytes.fromhex(bundle["root_hash"]),
+        )
+        record = bytes.fromhex(bundle["record"])
+        assert proof.verify(record, sth.root_hash)
+
+        # (c) A tampered record does not verify.
+        assert not proof.verify(record + b"x", sth.root_hash)
+
+    def test_proof_unknown_request_raises(self):
+        log = make_receipt_log()
+        with pytest.raises(InferenceError):
+            log.proof("missing")

@@ -152,6 +152,25 @@ async def chat_completions(request: Request) -> JSONResponse:
         request_digest=receipt_digest(request_bytes),
         response_digest=receipt_digest(text.encode("utf-8")),
     )
+
+    # Commit the receipt to the Merkle log BEFORE settlement: with the
+    # market's verifier wired to the log, an uncommitted receipt cannot
+    # settle, so every bill has an inclusion proof from birth.
+    receipt_log = getattr(request.app.state, "inference_receipt_log", None)
+    commitment = None
+    if receipt_log is not None:
+        try:
+            leaf_index = receipt_log.commit(receipt)
+        except InferenceError as exc:
+            logger.error("receipt commitment failed: %s", exc)
+            return JSONResponse(error_response(500, "receipt commitment failed"), 500)
+        sth = receipt_log.latest_sth  # published by commit()
+        commitment = {
+            "leaf_index": leaf_index,
+            "sth_sequence": sth.sequence,
+            "root_hash": sth.root_hash.hex(),
+        }
+
     try:
         settlement = market.settle_prepaid(receipt, customer_id)
     except InsufficientBalance as exc:
@@ -200,6 +219,7 @@ async def chat_completions(request: Request) -> JSONResponse:
                 "request_digest": receipt.request_digest,
                 "response_digest": receipt.response_digest,
                 "request_id": receipt.request_id,
+                "commitment": commitment,
             },
         }
     )
@@ -223,6 +243,27 @@ async def customer_balance(request: Request) -> JSONResponse:
             "minimum_to_serve_micro": market.min_balance_to_serve_micro,
         }
     )
+
+
+@router.get("/v1/receipts/{request_id}")
+async def receipt_proof(request: Request, request_id: str) -> JSONResponse:
+    """Audit bundle for one bill: record, inclusion proof, signed STH.
+
+    A customer verifies their bill without trusting the gateway: check
+    the ML-DSA STH signature, recompute the record's leaf hash up the
+    audit path to the STH root, then recompute the request/response
+    SHA3-256 digests inside the record against the bodies they hold.
+    """
+    receipt_log = getattr(request.app.state, "inference_receipt_log", None)
+    if receipt_log is None:
+        return JSONResponse(error_response(503, "receipt commitment log not available"), 503)
+    try:
+        bundle = receipt_log.proof(request_id)
+    except InferenceError:
+        return JSONResponse(
+            error_response(404, f"no committed receipt for request: {request_id}"), 404
+        )
+    return JSONResponse(bundle)
 
 
 @router.get("/v1/stats")

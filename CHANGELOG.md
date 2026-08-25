@@ -12,6 +12,15 @@ public-surface promise and the cross-version compatibility matrix.
 ## [Unreleased]
 
 ### Added
+- Committed inference receipts: `ReceiptCommitmentLog` commits every
+  bill's canonical, domain-separated receipt (new
+  `DOMAIN_INFERENCE_RECEIPT` tag) into the CT-style `MerkleLog` with an
+  ML-DSA-65 signed tree head per commit; the gateway commits before
+  settlement and the market verifier is the log, so an uncommitted or
+  tampered receipt cannot settle. Completions carry a
+  `billing.commitment` block and `GET /inference/v1/receipts/{id}`
+  serves the self-contained audit bundle (record, inclusion proof,
+  signed STH) a customer can verify without trusting the gateway
 - Prepaid inference billing: customer stablecoin balances on the
   `StablecoinLedger` (deposit/balance/debit-to-fees/refund, inside the
   solvency invariant), `InferenceMarket.settle_prepaid` debiting the

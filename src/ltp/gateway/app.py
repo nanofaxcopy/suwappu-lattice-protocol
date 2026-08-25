@@ -72,6 +72,7 @@ def create_app(config: Optional[GatewayConfig] = None) -> FastAPI:
     app.state.inference_market = None
     app.state.inference_backend = None
     app.state.inference_node_id = None
+    app.state.inference_receipt_log = None
 
     if config.rate_limit_enabled:
         app.state.rate_limiter = RateLimiter(config.rate_limit_per_minute)
@@ -180,6 +181,7 @@ class GatewayServer:
         inference_market=None,
         inference_backend=None,
         inference_node_id=None,
+        inference_receipt_log=None,
     ) -> None:
         self._config = config or GatewayConfig()
         self._app = create_app(self._config)
@@ -201,6 +203,7 @@ class GatewayServer:
         self._app.state.inference_market = inference_market
         self._app.state.inference_backend = inference_backend
         self._app.state.inference_node_id = inference_node_id
+        self._app.state.inference_receipt_log = inference_receipt_log
 
         # Build known_vks from keypair for self-issued token verification
         if keypair is not None:

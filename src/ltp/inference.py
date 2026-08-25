@@ -67,7 +67,9 @@ __all__ = [
     "InferenceSettlement",
     "InsufficientBalance",
     "MTOK",
+    "ReceiptCommitmentLog",
     "receipt_digest",
+    "receipt_canonical_bytes",
 ]
 
 MTOK = 1_000_000  # tokens per "per-million-token" price unit
@@ -343,3 +345,135 @@ class InferenceMarket:
         if model_id is not None:
             return self._tokens_by_model.get(model_id, 0)
         return sum(self._tokens_by_model.values())
+
+
+# ---------------------------------------------------------------------------
+# Receipt commitment — the auditable billing trail
+# ---------------------------------------------------------------------------
+
+
+def receipt_canonical_bytes(receipt: InferenceReceipt) -> bytes:
+    """Deterministic, domain-separated encoding of a receipt.
+
+    This is the leaf committed to the Merkle log: same receipt fields,
+    same bytes, always. Uses the ``DOMAIN_INFERENCE_RECEIPT`` tag from
+    the collision-checked ``ltp.domain`` registry.
+    """
+    from .domain import DOMAIN_INFERENCE_RECEIPT
+    from .encoding import CanonicalEncoder
+
+    return (
+        CanonicalEncoder(DOMAIN_INFERENCE_RECEIPT)
+        .string(receipt.request_id)
+        .string(receipt.node_id)
+        .string(receipt.model_id)
+        .uint64(receipt.input_tokens)
+        .uint64(receipt.output_tokens)
+        .raw_bytes(bytes.fromhex(receipt.request_digest))
+        .raw_bytes(bytes.fromhex(receipt.response_digest))
+        .finalize()
+    )
+
+
+class ReceiptCommitmentLog:
+    """Commits inference receipts to a CT-style Merkle log.
+
+    This turns the billing trail into evidence: every served request's
+    receipt (digests + metering, never the payloads) becomes a leaf in
+    an append-only BLAKE2b-256 Merkle tree whose heads are signed with
+    the operator's ML-DSA-65 key. A customer holding the response's
+    ``billing`` block can fetch the inclusion proof and verify — against
+    a post-quantum signed tree head — that they were billed for exactly
+    the exchange whose digests they can recompute locally.
+
+    Wiring: the gateway calls :meth:`commit` after building the receipt
+    and before settlement, and the market is constructed with
+    ``receipt_verifier=log.verifier()`` so an uncommitted (or tampered)
+    receipt can never settle. One STH is published per commit — receipts
+    are low-volume relative to shards, and per-commit heads give every
+    bill an immediately quotable anchor.
+    """
+
+    def __init__(self, merkle_log: Any) -> None:
+        """``merkle_log`` is a ``ltp.merkle_log.MerkleLog`` (duck-typed
+        to avoid importing the log stack at module import time)."""
+        self._log = merkle_log
+        self._index_by_request: dict[str, int] = {}
+
+    # --- Committing ---
+
+    def commit(self, receipt: InferenceReceipt) -> int:
+        """Append the receipt's canonical leaf and publish an STH.
+
+        Returns the leaf index. Committing the same ``request_id`` twice
+        is rejected — one request, one leaf.
+        """
+        if receipt.request_id in self._index_by_request:
+            raise InferenceError(f"receipt already committed: {receipt.request_id}")
+        index = self._log.append(receipt_canonical_bytes(receipt))
+        self._log.publish_sth()
+        self._index_by_request[receipt.request_id] = index
+        return index
+
+    def leaf_index(self, request_id: str) -> int | None:
+        """The committed leaf index for ``request_id``, if any."""
+        return self._index_by_request.get(request_id)
+
+    @property
+    def latest_sth(self) -> Any:
+        """The most recently published signed tree head."""
+        return self._log.latest_sth
+
+    # --- Verifying ---
+
+    def is_committed(self, receipt: InferenceReceipt) -> bool:
+        """True iff this exact receipt (byte-identical canonical leaf)
+        is committed in the log under its ``request_id``."""
+        index = self._index_by_request.get(receipt.request_id)
+        if index is None:
+            return False
+        return self._log.get_record(index) == receipt_canonical_bytes(receipt)
+
+    def verifier(self) -> Callable[[InferenceReceipt], bool]:
+        """A receipt verifier for ``InferenceMarket(receipt_verifier=...)``.
+
+        With this wired, settlement refuses any receipt that was not
+        committed — or whose fields differ from what was committed.
+        """
+        return self.is_committed
+
+    # --- Auditing ---
+
+    def proof(self, request_id: str) -> dict[str, Any]:
+        """A self-contained, JSON-serializable audit bundle for one bill.
+
+        Contains the canonical record, the O(log N) inclusion proof, and
+        the latest ML-DSA-signed tree head. A customer verifies by (a)
+        checking the STH signature, (b) recomputing the record's leaf
+        against the audit path up to the STH root, and (c) recomputing
+        the request/response digests inside the record against the
+        bodies they hold. Raises ``InferenceError`` for an unknown
+        ``request_id``.
+        """
+        index = self._index_by_request.get(request_id)
+        if index is None:
+            raise InferenceError(f"no committed receipt for request: {request_id}")
+        record = self._log.get_record(index)
+        inclusion = self._log.inclusion_proof(index)
+        sth = self._log.latest_sth
+        return {
+            "request_id": request_id,
+            "leaf_index": inclusion.leaf_index,
+            "tree_size": inclusion.tree_size,
+            "record": record.hex(),
+            "audit_path": [node.hex() for node in inclusion.audit_path],
+            "root_hash": inclusion.root_hash.hex(),
+            "sth": {
+                "sequence": sth.sequence,
+                "tree_size": sth.tree_size,
+                "timestamp": sth.timestamp,
+                "root_hash": sth.root_hash.hex(),
+                "operator_vk": sth.operator_vk.hex(),
+                "signature": sth.signature.hex(),
+            },
+        }

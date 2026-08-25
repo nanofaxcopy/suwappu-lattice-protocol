@@ -15,6 +15,9 @@ Covers:
   - 502 when the model backend raises
   - Deterministic request digest (same body -> same digest)
   - /inference/v1/stats aggregates
+  - Receipt commitment wiring: commitment block in billing, market
+    verifier fed by the log, GET /inference/v1/receipts/{id} audit
+    bundle verifying end to end, 404/503 paths
 """
 
 from __future__ import annotations
@@ -205,3 +208,83 @@ class TestStats:
         assert stats["settled_requests"] == 1
         assert stats["revenue_micro"] == market.revenue_micro()
         assert stats["per_model"][0]["id"] == "suwappu-1"
+
+
+class TestReceiptCommitmentWiring:
+    def _committed_app(self):
+        from src.ltp.inference import ReceiptCommitmentLog
+        from src.ltp.keypair import KeyPair
+        from src.ltp.merkle_log import MerkleLog
+
+        keypair = KeyPair.generate("gw-receipt-test")
+        receipt_log = ReceiptCommitmentLog(MerkleLog(keypair.vk, keypair.sk))
+        ledger = StablecoinLedger(IncentiveConfig())
+        market = InferenceMarket(ledger, receipt_verifier=receipt_log.verifier())
+        market.register_model(
+            InferencePricing(
+                model_id="suwappu-1",
+                input_micro_per_mtok=250_000,
+                output_micro_per_mtok=1_000_000,
+            )
+        )
+        ledger.customer_deposit(CUSTOMER, 10_000_000)
+        app = create_app(GatewayConfig(jwt_enabled=False))
+        app.state.inference_market = market
+        app.state.inference_backend = fake_backend
+        app.state.inference_node_id = "gpu-node-1"
+        app.state.inference_receipt_log = receipt_log
+        return TestClient(app), market, receipt_log
+
+    def test_completion_carries_commitment_and_settles(self):
+        client, market, receipt_log = self._committed_app()
+        response = client.post("/inference/v1/chat/completions", json=BODY, headers=HEADERS)
+        assert response.status_code == 200
+        billing = response.json()["billing"]
+        commitment = billing["commitment"]
+        assert commitment["leaf_index"] == 0
+        assert len(commitment["root_hash"]) == 64
+        # Settlement went through the log-backed verifier.
+        assert market.settled_count == 1
+        assert receipt_log.leaf_index(billing["request_id"]) == 0
+
+    def test_receipts_endpoint_returns_verifiable_bundle(self):
+        from src.ltp.merkle_log.proof import InclusionProof
+        from src.ltp.merkle_log.sth import SignedTreeHead
+
+        client, _market, _log = self._committed_app()
+        billing = client.post("/inference/v1/chat/completions", json=BODY, headers=HEADERS).json()[
+            "billing"
+        ]
+        response = client.get(f"/inference/v1/receipts/{billing['request_id']}")
+        assert response.status_code == 200
+        bundle = response.json()
+
+        sth = SignedTreeHead(
+            sequence=bundle["sth"]["sequence"],
+            tree_size=bundle["sth"]["tree_size"],
+            timestamp=bundle["sth"]["timestamp"],
+            root_hash=bytes.fromhex(bundle["sth"]["root_hash"]),
+            operator_vk=bytes.fromhex(bundle["sth"]["operator_vk"]),
+            signature=bytes.fromhex(bundle["sth"]["signature"]),
+        )
+        assert sth.verify()
+        proof = InclusionProof(
+            leaf_index=bundle["leaf_index"],
+            tree_size=bundle["tree_size"],
+            audit_path=[bytes.fromhex(h) for h in bundle["audit_path"]],
+            root_hash=bytes.fromhex(bundle["root_hash"]),
+        )
+        assert proof.verify(bytes.fromhex(bundle["record"]), sth.root_hash)
+
+    def test_receipts_endpoint_404_unknown(self):
+        client, _market, _log = self._committed_app()
+        assert client.get("/inference/v1/receipts/nope").status_code == 404
+
+    def test_receipts_endpoint_503_without_log(self, client):
+        assert client.get("/inference/v1/receipts/nope").status_code == 503
+
+    def test_no_commitment_block_without_log(self, client):
+        billing = client.post("/inference/v1/chat/completions", json=BODY, headers=HEADERS).json()[
+            "billing"
+        ]
+        assert billing["commitment"] is None

@@ -85,22 +85,39 @@ as HTTP 402 with the exact balance and amount due;
 `GET /inference/v1/balance` is the customer's read. Production deposits
 arrive as bridged stablecoins credited ledger-side.
 
-## 5. What this does NOT solve yet
+## 5. Committed receipts — the auditable bill
+
+Every receipt is committed to a CT-style Merkle log
+(`ReceiptCommitmentLog` over `ltp.merkle_log.MerkleLog`): the receipt's
+canonical, domain-separated encoding (`DOMAIN_INFERENCE_RECEIPT` in the
+collision-checked registry) becomes a leaf in an append-only tree whose
+heads are ML-DSA-65 signed. The gateway commits **before** settlement
+and the market's verifier is the log (`receipt_verifier=log.verifier()`),
+so an uncommitted or tampered receipt can never settle. The completion's
+`billing.commitment` block quotes the leaf index and signed root, and
+`GET /inference/v1/receipts/{request_id}` returns the full audit bundle
+— record, O(log N) inclusion proof, signed tree head — which a customer
+verifies without trusting the gateway: check the STH signature, walk the
+audit path, recompute the SHA3-256 digests against the bodies they hold.
+Anchoring the log's STHs on-chain rides the existing anchor pipeline
+(`AnchorScheduler` already anchors Merkle roots), which closes the loop
+to a fully on-chain-auditable bill.
+
+## 6. What this does NOT solve yet
 
 - **The bridge-to-ledger deposit pipeline.** `customer_deposit` is the
   ledger-side credit; watching bridge transfers and crediting the right
   customer is the ops wiring that remains.
-- **Receipt commitment wiring.** The verifier hook exists; the default is
-  structural. Wiring `LTPProtocol.commit` for request/response digests +
-  anchoring is the hardening step that makes billing independently
-  auditable.
+- **Receipt-log STH anchoring config.** The commitment log publishes
+  signed heads; pointing the deployment's `AnchorScheduler` at it is
+  deployment wiring, not new mechanism.
 - **Distributed serving.** One gateway, one backend today. Routing across
   many GPU providers (with per-provider receipts — the `node_id` field is
   already there) is the scale-out step, and per-provider attribution is
   why receipts carry `node_id` from day one.
 - **The model itself.** This is the pipe and the till, not the weights.
 
-## 6. Reading order
+## 7. Reading order
 
 1. `DEFERRED_TOKEN_ARCHITECTURE.md` — why stablecoin-native
 2. `VALIDATOR_COMPUTE_INCENTIVES.md` — the supply side (proof-gated pay)
