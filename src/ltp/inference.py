@@ -65,6 +65,7 @@ __all__ = [
     "InferencePricing",
     "InferenceReceipt",
     "InferenceSettlement",
+    "InsufficientBalance",
     "MTOK",
     "receipt_digest",
 ]
@@ -76,6 +77,20 @@ _HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
 class InferenceError(Exception):
     """Raised on billing violations: bad receipts, replays, underpayment."""
+
+
+class InsufficientBalance(InferenceError):
+    """A prepaid settlement was refused: the customer's balance is short.
+
+    Carries ``balance_micro`` and ``due_micro`` so callers (the gateway's
+    402 path) can tell the customer exactly what to top up.
+    """
+
+    def __init__(self, customer_id: str, balance_micro: int, due_micro: int) -> None:
+        super().__init__(f"customer {customer_id} balance {balance_micro} cannot cover {due_micro}")
+        self.customer_id = customer_id
+        self.balance_micro = balance_micro
+        self.due_micro = due_micro
 
 
 def receipt_digest(payload: bytes) -> str:
@@ -167,6 +182,9 @@ class InferenceSettlement:
     provider_claim_micro: int
     insurance_micro: int
     treasury_micro: int
+    # Set on prepaid settlements: who was debited, and what remains.
+    customer_id: str | None = None
+    customer_balance_after_micro: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -188,9 +206,17 @@ class InferenceMarket:
         self,
         ledger: StablecoinLedger,
         receipt_verifier: Callable[[InferenceReceipt], Any] | None = None,
+        min_balance_to_serve_micro: int = 100_000,  # $0.10
     ) -> None:
+        if min_balance_to_serve_micro < 0:
+            raise ValueError("min_balance_to_serve_micro must be non-negative")
         self.ledger = ledger
         self._verify_receipt = receipt_verifier or (lambda receipt: True)
+        # Floor a customer must hold before a request is served at all.
+        # Output length is unknown until the model runs, so serving a
+        # broke customer risks unbilled compute; the floor bounds that
+        # exposure per request. The gateway checks it pre-serve.
+        self.min_balance_to_serve_micro = min_balance_to_serve_micro
         self._pricing: dict[str, InferencePricing] = {}
         self._settled_requests: set[str] = set()
         self._revenue_by_model: dict[str, int] = {}
@@ -218,24 +244,24 @@ class InferenceMarket:
 
     # --- Settlement ---
 
-    def settle(self, receipt: InferenceReceipt, paid_micro: int) -> InferenceSettlement:
-        """Settle one served request: verify, bill, split, accrue.
-
-        Raises ``InferenceError`` on an unlisted model, a replayed
-        ``request_id``, a failed receipt verification, or payment below
-        the metered quote. On any raise nothing is recorded — the
-        request stays settleable once the defect is fixed.
-        """
+    def _validate_for_settlement(self, receipt: InferenceReceipt) -> int:
+        """Shared pre-settlement checks. Returns the metered quote (micro)."""
         pricing = self.pricing_for(receipt.model_id)
         if receipt.request_id in self._settled_requests:
             raise InferenceError(f"request already settled: {receipt.request_id}")
         if not self._verify_receipt(receipt):
             raise InferenceError(f"receipt verification failed: {receipt.request_id}")
-        due = pricing.quote(receipt.input_tokens, receipt.output_tokens)
-        if paid_micro < due:
-            raise InferenceError(f"underpayment: paid {paid_micro}, metered {due}")
+        return pricing.quote(receipt.input_tokens, receipt.output_tokens)
 
-        operator, insurance, treasury = self.ledger.deposit_fee(paid_micro)
+    def _record_settlement(
+        self,
+        receipt: InferenceReceipt,
+        revenue_micro: int,
+        split: tuple[int, int, int],
+        customer_id: str | None = None,
+    ) -> InferenceSettlement:
+        """Accrue the provider claim and record totals. Split is already applied."""
+        operator, insurance, treasury = split
         # The serving node's claim is the operator share of its own
         # revenue; payment still flows through epoch settlement under
         # the pool's solvency clamp.
@@ -245,7 +271,7 @@ class InferenceMarket:
 
         self._settled_requests.add(receipt.request_id)
         self._revenue_by_model[receipt.model_id] = (
-            self._revenue_by_model.get(receipt.model_id, 0) + paid_micro
+            self._revenue_by_model.get(receipt.model_id, 0) + revenue_micro
         )
         self._tokens_by_model[receipt.model_id] = (
             self._tokens_by_model.get(receipt.model_id, 0)
@@ -256,11 +282,48 @@ class InferenceMarket:
             request_id=receipt.request_id,
             node_id=receipt.node_id,
             model_id=receipt.model_id,
-            revenue_micro=paid_micro,
+            revenue_micro=revenue_micro,
             provider_claim_micro=operator if not account.evicted else 0,
             insurance_micro=insurance,
             treasury_micro=treasury,
+            customer_id=customer_id,
+            customer_balance_after_micro=(
+                self.ledger.customer_balance(customer_id) if customer_id else None
+            ),
         )
+
+    def settle(self, receipt: InferenceReceipt, paid_micro: int) -> InferenceSettlement:
+        """Settle one served request paid out-of-band: verify, bill, split.
+
+        For payment collected outside the ledger (an invoice, a bridge
+        transfer referencing this request). Raises ``InferenceError`` on
+        an unlisted model, a replayed ``request_id``, a failed receipt
+        verification, or payment below the metered quote. On any raise
+        nothing is recorded — the request stays settleable once the
+        defect is fixed.
+        """
+        due = self._validate_for_settlement(receipt)
+        if paid_micro < due:
+            raise InferenceError(f"underpayment: paid {paid_micro}, metered {due}")
+        split = self.ledger.deposit_fee(paid_micro)
+        return self._record_settlement(receipt, paid_micro, split)
+
+    def settle_prepaid(self, receipt: InferenceReceipt, customer_id: str) -> InferenceSettlement:
+        """Settle one served request against a customer's prepaid balance.
+
+        The metered quote is debited from the customer's ledger balance
+        into the fee split. Raises ``InsufficientBalance`` (with the
+        balance and the amount due) when the balance can't cover it —
+        nothing moves, and the request stays settleable after a top-up.
+        """
+        if not customer_id:
+            raise InferenceError("customer_id must be non-empty")
+        due = self._validate_for_settlement(receipt)
+        balance = self.ledger.customer_balance(customer_id)
+        if balance < due:
+            raise InsufficientBalance(customer_id, balance, due)
+        split = self.ledger.customer_debit_to_fees(customer_id, due)
+        return self._record_settlement(receipt, due, split, customer_id=customer_id)
 
     # --- Introspection ---
 

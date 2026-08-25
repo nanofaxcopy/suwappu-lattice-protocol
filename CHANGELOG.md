@@ -12,6 +12,14 @@ public-surface promise and the cross-version compatibility matrix.
 ## [Unreleased]
 
 ### Added
+- Prepaid inference billing: customer stablecoin balances on the
+  `StablecoinLedger` (deposit/balance/debit-to-fees/refund, inside the
+  solvency invariant), `InferenceMarket.settle_prepaid` debiting the
+  metered quote atomically (`InsufficientBalance` moves nothing and the
+  request stays settleable after a top-up), a configurable serve floor
+  bounding unbilled-compute exposure, gateway 402 flows before serving
+  and after metering, JWT-subject customer resolution with a dev header
+  fallback, and `GET /inference/v1/balance`
 - Inference revenue lane (`src/ltp/inference.py` + gateway router
   `/inference/v1/*`, private surface — not re-exported from
   `ltp.__init__`): sell metered model inference in stablecoins against a

@@ -4,7 +4,12 @@ Tests for the gateway inference router (src/ltp/gateway/routers/inference.py).
 Covers:
   - /inference/v1/models listing with prices
   - /inference/v1/chat/completions happy path: completion + usage +
-    billing block, revenue lands in the market/ledger
+    billing block, prepaid balance debited, revenue lands in the ledger
+  - 402 before serving when the balance is under the serve floor
+  - 402 after metering when the balance can't cover the amount due
+    (completion withheld, nothing debited)
+  - Customer resolution via the x-suwappu-customer header fallback
+  - /inference/v1/balance read
   - 503 when the market or backend is not wired
   - 400 on malformed bodies, 404 on unlisted model
   - 502 when the model backend raises
@@ -42,12 +47,18 @@ def market():
     return m
 
 
+CUSTOMER = "cust-alice"
+HEADERS = {"x-suwappu-customer": CUSTOMER}
+
+
 @pytest.fixture
 def client(market):
     app = create_app(GatewayConfig(jwt_enabled=False))
     app.state.inference_market = market
     app.state.inference_backend = fake_backend
     app.state.inference_node_id = "gpu-node-1"
+    # Fund the test customer well above the serve floor.
+    market.ledger.customer_deposit(CUSTOMER, 10_000_000)  # $10
     return TestClient(app)
 
 
@@ -75,7 +86,7 @@ class TestModels:
 
 class TestCompletions:
     def test_happy_path_bills_and_returns_completion(self, client, market):
-        response = client.post("/inference/v1/chat/completions", json=BODY)
+        response = client.post("/inference/v1/chat/completions", json=BODY, headers=HEADERS)
         assert response.status_code == 200
         payload = response.json()
         assert payload["choices"][0]["message"]["content"].startswith("echo:")
@@ -83,19 +94,56 @@ class TestCompletions:
         assert usage["total_tokens"] == usage["prompt_tokens"] + usage["completion_tokens"]
         billing = payload["billing"]
         assert billing["settled_micro"] >= 1
+        assert billing["customer_id"] == CUSTOMER
         assert len(billing["request_digest"]) == 64
         assert market.settled_count == 1
         assert market.revenue_micro() == billing["settled_micro"]
+        # Prepaid debit: balance went down by exactly the settled amount.
+        assert billing["balance_after_micro"] == 10_000_000 - billing["settled_micro"]
+        assert market.ledger.customer_balance(CUSTOMER) == billing["balance_after_micro"]
         # The serving node accrued the operator share as a claim.
         assert (
             market.ledger.account("gpu-node-1").earned_claim_micro
-            == (billing["provider_claim_micro"])
+            == billing["provider_claim_micro"]
         )
         assert market.ledger.check_solvency()
 
+    def test_402_below_serve_floor_before_backend_runs(self, client, market):
+        # An unfunded customer is refused before any compute happens.
+        response = client.post(
+            "/inference/v1/chat/completions",
+            json=BODY,
+            headers={"x-suwappu-customer": "cust-broke"},
+        )
+        assert response.status_code == 402
+        payload = response.json()
+        assert payload["balance_micro"] == 0
+        assert payload["minimum_micro"] == market.min_balance_to_serve_micro
+        assert market.settled_count == 0
+
+    def test_402_when_metered_usage_exceeds_balance(self, market):
+        # Balance clears the floor but the metered bill exceeds it: the
+        # completion is withheld and nothing is debited.
+        app = create_app(GatewayConfig(jwt_enabled=False))
+        app.state.inference_market = market
+        app.state.inference_node_id = "gpu-node-1"
+        # Backend reports a huge output; bill far exceeds the balance.
+        app.state.inference_backend = lambda m, msgs: ("big", 10, 10_000_000_000)
+        market.ledger.customer_deposit("cust-small", market.min_balance_to_serve_micro)
+        response = TestClient(app).post(
+            "/inference/v1/chat/completions",
+            json=BODY,
+            headers={"x-suwappu-customer": "cust-small"},
+        )
+        assert response.status_code == 402
+        payload = response.json()
+        assert payload["due_micro"] > payload["balance_micro"]
+        assert market.settled_count == 0
+        assert market.ledger.customer_balance("cust-small") == market.min_balance_to_serve_micro
+
     def test_two_requests_distinct_ids_same_request_digest(self, client):
-        first = client.post("/inference/v1/chat/completions", json=BODY).json()
-        second = client.post("/inference/v1/chat/completions", json=BODY).json()
+        first = client.post("/inference/v1/chat/completions", json=BODY, headers=HEADERS).json()
+        second = client.post("/inference/v1/chat/completions", json=BODY, headers=HEADERS).json()
         assert first["billing"]["request_id"] != second["billing"]["request_id"]
         assert first["billing"]["request_digest"] == second["billing"]["request_digest"]
 
@@ -126,14 +174,31 @@ class TestCompletions:
         app = create_app(GatewayConfig(jwt_enabled=False))
         app.state.inference_market = market
         app.state.inference_backend = broken_backend
-        response = TestClient(app).post("/inference/v1/chat/completions", json=BODY)
+        market.ledger.customer_deposit(CUSTOMER, 10_000_000)
+        response = TestClient(app).post(
+            "/inference/v1/chat/completions", json=BODY, headers=HEADERS
+        )
         assert response.status_code == 502
         assert market.settled_count == 0
 
 
+class TestBalance:
+    def test_balance_read_for_header_customer(self, client, market):
+        response = client.get("/inference/v1/balance", headers=HEADERS)
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["customer_id"] == CUSTOMER
+        assert payload["balance_micro"] == 10_000_000
+        assert payload["minimum_to_serve_micro"] == market.min_balance_to_serve_micro
+
+    def test_balance_defaults_to_anonymous(self, client):
+        response = client.get("/inference/v1/balance")
+        assert response.json()["customer_id"] == "anonymous"
+
+
 class TestStats:
     def test_stats_aggregate(self, client, market):
-        client.post("/inference/v1/chat/completions", json=BODY)
+        client.post("/inference/v1/chat/completions", json=BODY, headers=HEADERS)
         response = client.get("/inference/v1/stats")
         assert response.status_code == 200
         stats = response.json()

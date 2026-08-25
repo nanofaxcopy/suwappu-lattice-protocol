@@ -7,7 +7,10 @@ the request against ``app.state.inference_market``
 (``ltp.inference.InferenceMarket``), and returns the completion with a
 billing block attached. Requests are JWT-protected under the gateway's
 standard middleware (the paths are not in the unauthenticated list) —
-the JWT subject is the paying customer.
+the JWT subject is the paying customer, and billing is **prepaid**: the
+metered quote is debited from the customer's ledger balance, with 402
+both before serving (balance under the serve floor) and after metering
+(balance under the amount due — the completion is withheld).
 
 The backend is deployment-injected at ``app.state.inference_backend``:
 a callable ``(model_id, messages) -> (text, input_tokens,
@@ -24,8 +27,27 @@ import uuid
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from ...inference import InferenceError, InferenceReceipt, receipt_digest
+from ...inference import (
+    InferenceError,
+    InferenceReceipt,
+    InsufficientBalance,
+    receipt_digest,
+)
 from ..serializers import error_response
+
+
+def _customer_id(request: Request) -> str:
+    """Resolve the paying customer for this request.
+
+    JWT subject when the gateway runs with auth enabled (the production
+    posture); the ``x-suwappu-customer`` header as the dev/test
+    fallback; ``anonymous`` otherwise.
+    """
+    claims = getattr(request.state, "jwt_claims", None)
+    if claims is not None and getattr(claims, "sub", None):
+        return claims.sub
+    header = request.headers.get("x-suwappu-customer", "").strip()
+    return header or "anonymous"
 
 
 def _canonical_request_bytes(model_id: str, messages: list) -> bytes:
@@ -95,6 +117,23 @@ async def chat_completions(request: Request) -> JSONResponse:
     except InferenceError:
         return JSONResponse(error_response(404, f"model not listed: {model_id}"), 404)
 
+    # Prepaid floor: don't burn model compute for a customer whose
+    # balance couldn't plausibly cover the response. Output length is
+    # unknown until the model runs; the floor bounds the exposure.
+    customer_id = _customer_id(request)
+    balance = market.ledger.customer_balance(customer_id)
+    if balance < market.min_balance_to_serve_micro:
+        return JSONResponse(
+            {
+                "error": "insufficient prepaid balance",
+                "code": 402,
+                "customer_id": customer_id,
+                "balance_micro": balance,
+                "minimum_micro": market.min_balance_to_serve_micro,
+            },
+            status_code=402,
+        )
+
     node_id = getattr(request.app.state, "inference_node_id", None) or "gateway"
     request_bytes = _canonical_request_bytes(model_id, messages)
 
@@ -113,9 +152,23 @@ async def chat_completions(request: Request) -> JSONResponse:
         request_digest=receipt_digest(request_bytes),
         response_digest=receipt_digest(text.encode("utf-8")),
     )
-    due = market.quote(model_id, input_tokens, output_tokens)
     try:
-        settlement = market.settle(receipt, due)
+        settlement = market.settle_prepaid(receipt, customer_id)
+    except InsufficientBalance as exc:
+        # The response ran longer than the remaining balance covers. The
+        # completion is withheld — the customer pays for what they get,
+        # and gets what they pay for. The serve floor bounds how often
+        # this can happen.
+        return JSONResponse(
+            {
+                "error": "insufficient prepaid balance for metered usage",
+                "code": 402,
+                "customer_id": customer_id,
+                "balance_micro": exc.balance_micro,
+                "due_micro": exc.due_micro,
+            },
+            status_code=402,
+        )
     except InferenceError as exc:
         # The completion ran but billing was refused — surface it as a
         # server-side billing fault, never as a silent free request.
@@ -142,10 +195,32 @@ async def chat_completions(request: Request) -> JSONResponse:
             "billing": {
                 "settled_micro": settlement.revenue_micro,
                 "provider_claim_micro": settlement.provider_claim_micro,
+                "customer_id": customer_id,
+                "balance_after_micro": settlement.customer_balance_after_micro,
                 "request_digest": receipt.request_digest,
                 "response_digest": receipt.response_digest,
                 "request_id": receipt.request_id,
             },
+        }
+    )
+
+
+@router.get("/v1/balance")
+async def customer_balance(request: Request) -> JSONResponse:
+    """The calling customer's prepaid balance and the serve floor.
+
+    Deposits are credited ledger-side (bridged stablecoins in
+    production); this endpoint is the read.
+    """
+    market = request.app.state.inference_market
+    if market is None:
+        return JSONResponse(error_response(503, "inference market not available"), 503)
+    customer_id = _customer_id(request)
+    return JSONResponse(
+        {
+            "customer_id": customer_id,
+            "balance_micro": market.ledger.customer_balance(customer_id),
+            "minimum_to_serve_micro": market.min_balance_to_serve_micro,
         }
     )
 

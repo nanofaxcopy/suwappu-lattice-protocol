@@ -13,6 +13,9 @@ Covers:
   - Evicted serving node: customer billed, no claim accrued
   - Revenue funding the incentive loop: inference fee in, epoch
     settlement pays the serving provider from the operator pool
+  - Prepaid customer accounts: deposit/balance/debit/refund on the
+    ledger with solvency intact; settle_prepaid debiting the quote,
+    InsufficientBalance leaving everything untouched and retryable
   - Introspection totals (settled_count, revenue, tokens)
 """
 
@@ -25,6 +28,7 @@ from src.ltp.inference import (
     InferenceMarket,
     InferencePricing,
     InferenceReceipt,
+    InsufficientBalance,
     receipt_digest,
 )
 
@@ -212,3 +216,107 @@ class TestRevenueLoop:
         assert market.revenue_micro("suwappu-1") == 2 * due
         assert market.tokens_served() == 2 * 1_500
         assert market.revenue_micro("missing") == 0
+
+
+# ---------------------------------------------------------------------------
+# Prepaid customer accounts
+# ---------------------------------------------------------------------------
+
+
+class TestCustomerAccounts:
+    def test_deposit_and_balance(self):
+        market = make_market()
+        ledger = market.ledger
+        assert ledger.customer_deposit("alice", 5_000) == 5_000
+        assert ledger.customer_deposit("alice", 1_000) == 6_000
+        assert ledger.customer_balance("alice") == 6_000
+        assert ledger.customer_balance("unknown") == 0
+        assert ledger.check_solvency()
+
+    def test_debit_moves_balance_into_fee_split(self):
+        market = make_market()
+        ledger = market.ledger
+        ledger.customer_deposit("alice", 10_000)
+        operator, insurance, treasury = ledger.customer_debit_to_fees("alice", 10_000)
+        assert operator + insurance + treasury == 10_000
+        assert ledger.customer_balance("alice") == 0
+        assert ledger.operator_pool_micro == operator
+        assert ledger.check_solvency()
+
+    def test_debit_beyond_balance_rejected_atomically(self):
+        market = make_market()
+        ledger = market.ledger
+        ledger.customer_deposit("alice", 100)
+        with pytest.raises(Exception):
+            ledger.customer_debit_to_fees("alice", 101)
+        assert ledger.customer_balance("alice") == 100
+        assert ledger.operator_pool_micro == 0
+        assert ledger.check_solvency()
+
+    def test_refund_returns_remaining_balance(self):
+        market = make_market()
+        ledger = market.ledger
+        ledger.customer_deposit("alice", 700)
+        assert ledger.customer_refund("alice") == 700
+        assert ledger.customer_balance("alice") == 0
+        assert ledger.check_solvency()
+
+
+class TestPrepaidSettlement:
+    def test_settle_prepaid_debits_quote(self):
+        market = make_market()
+        ledger = market.ledger
+        due = market.quote("suwappu-1", 1_000, 500)
+        ledger.customer_deposit("alice", due + 123)
+        settlement = market.settle_prepaid(make_receipt(), "alice")
+        assert settlement.revenue_micro == due
+        assert settlement.customer_id == "alice"
+        assert settlement.customer_balance_after_micro == 123
+        assert ledger.customer_balance("alice") == 123
+        assert ledger.account("gpu-1").earned_claim_micro == settlement.provider_claim_micro
+        assert ledger.check_solvency()
+
+    def test_insufficient_balance_touches_nothing_and_stays_retryable(self):
+        market = make_market()
+        ledger = market.ledger
+        due = market.quote("suwappu-1", 1_000, 500)
+        ledger.customer_deposit("alice", due - 1)
+        with pytest.raises(InsufficientBalance) as excinfo:
+            market.settle_prepaid(make_receipt(), "alice")
+        assert excinfo.value.balance_micro == due - 1
+        assert excinfo.value.due_micro == due
+        assert market.settled_count == 0
+        assert ledger.customer_balance("alice") == due - 1
+        # A top-up makes the same request settleable.
+        ledger.customer_deposit("alice", 1)
+        market.settle_prepaid(make_receipt(), "alice")
+        assert ledger.check_solvency()
+
+    def test_prepaid_replay_rejected_before_debit(self):
+        market = make_market()
+        ledger = market.ledger
+        due = market.quote("suwappu-1", 1_000, 500)
+        ledger.customer_deposit("alice", 2 * due)
+        market.settle_prepaid(make_receipt(), "alice")
+        with pytest.raises(InferenceError):
+            market.settle_prepaid(make_receipt(), "alice")
+        # Only one debit happened.
+        assert ledger.customer_balance("alice") == due
+        assert ledger.check_solvency()
+
+    def test_empty_customer_rejected(self):
+        market = make_market()
+        with pytest.raises(InferenceError):
+            market.settle_prepaid(make_receipt(), "")
+
+    def test_prepaid_revenue_pays_provider_at_epoch_settlement(self):
+        from src.ltp.incentives import StableNodeIncentive
+
+        market = make_market()
+        ledger = market.ledger
+        due = market.quote("suwappu-1", 100_000, 50_000)
+        ledger.customer_deposit("alice", due)
+        settlement = market.settle_prepaid(make_receipt(), "alice")
+        snapshot = StableNodeIncentive(ledger).settle_epoch(1)
+        assert snapshot.payouts["gpu-1"] == settlement.provider_claim_micro
+        assert ledger.check_solvency()

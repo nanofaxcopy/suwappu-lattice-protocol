@@ -227,6 +227,7 @@ class StablecoinLedger:
         self.insurance_pool_micro: int = 0
         self.treasury_micro: int = 0
         self._accounts: dict[str, NodeIncentiveAccount] = {}
+        self._customer_balances: dict[str, int] = {}
         self._total_deposited: int = 0
         self._total_withdrawn: int = 0
 
@@ -280,6 +281,59 @@ class StablecoinLedger:
             raise LedgerError("bond must be non-negative")
         self.account(node_id).bond_micro += amount_micro
         self._total_deposited += amount_micro
+
+    # --- Customer accounts (prepaid balances) ---
+
+    def customer_deposit(self, customer_id: str, amount_micro: int) -> int:
+        """Credit a customer's prepaid balance. Returns the new balance.
+
+        A customer balance is a liability the ledger holds in full until
+        it is either spent (``customer_debit_to_fees``) or refunded
+        (``customer_refund``). Production deposits arrive as bridged
+        stablecoins; this method is the ledger-side credit.
+        """
+        if not customer_id:
+            raise LedgerError("customer_id must be non-empty")
+        if amount_micro < 0:
+            raise LedgerError("deposit must be non-negative")
+        self._customer_balances[customer_id] = (
+            self._customer_balances.get(customer_id, 0) + amount_micro
+        )
+        self._total_deposited += amount_micro
+        return self._customer_balances[customer_id]
+
+    def customer_balance(self, customer_id: str) -> int:
+        """A customer's current prepaid balance in micro (0 if unknown)."""
+        return self._customer_balances.get(customer_id, 0)
+
+    def customer_debit_to_fees(self, customer_id: str, amount_micro: int) -> tuple[int, int, int]:
+        """Debit a customer's balance into the fee split.
+
+        Returns ``(operator_share, insurance_share, treasury_share)``.
+        Raises ``LedgerError`` if the balance cannot cover the debit —
+        nothing moves on failure. The deposit was already counted when
+        the balance was credited, so this only re-buckets held funds.
+        """
+        if amount_micro < 0:
+            raise LedgerError("debit must be non-negative")
+        balance = self._customer_balances.get(customer_id, 0)
+        if balance < amount_micro:
+            raise LedgerError(f"insufficient customer balance: have {balance}, need {amount_micro}")
+        self._customer_balances[customer_id] = balance - amount_micro
+        cfg = self.config
+        insurance = amount_micro * cfg.fee_insurance_share_bps // 10_000
+        treasury = amount_micro * cfg.fee_treasury_share_bps // 10_000
+        operator = amount_micro - insurance - treasury
+        self.operator_pool_micro += operator
+        self.insurance_pool_micro += insurance
+        self.treasury_micro += treasury
+        return operator, insurance, treasury
+
+    def customer_refund(self, customer_id: str) -> int:
+        """Return a customer's entire remaining balance (withdrawal)."""
+        refund = self._customer_balances.pop(customer_id, 0)
+        self._total_withdrawn += refund
+        return refund
 
     # --- Internal movements ---
 
@@ -335,7 +389,14 @@ class StablecoinLedger:
     def total_held_micro(self) -> int:
         """Every micro the ledger currently holds, across all buckets."""
         bonds = sum(a.bond_micro for a in self._accounts.values())
-        return self.operator_pool_micro + self.insurance_pool_micro + self.treasury_micro + bonds
+        customers = sum(self._customer_balances.values())
+        return (
+            self.operator_pool_micro
+            + self.insurance_pool_micro
+            + self.treasury_micro
+            + bonds
+            + customers
+        )
 
     def check_solvency(self) -> bool:
         """True iff held == deposited - withdrawn. Never mints, never leaks."""

@@ -68,12 +68,28 @@ calls a third-party inference API; it fronts the network's own runtime.
 `/inference/v1/models` lists prices; `/inference/v1/stats` exposes revenue
 and token totals for dashboards (the provider portal's demand-side panel).
 
-## 4. What this does NOT solve yet
+## 4. Prepaid billing
 
-- **Prepaid balances / payment rails.** `settle` takes `paid_micro` as an
-  argument; the production path needs customer deposit accounts on the
-  ledger (stablecoin in via the bridge) debited per request. Additive
-  change to `StablecoinLedger`; scoped separately.
+Customers hold **prepaid stablecoin balances on the ledger**
+(`StablecoinLedger.customer_deposit` / `customer_balance` /
+`customer_debit_to_fees` / `customer_refund` — balances are liabilities
+inside the same solvency invariant). The gateway resolves the customer
+from the JWT subject (header fallback in dev), refuses to serve below a
+configurable floor (`InferenceMarket.min_balance_to_serve_micro`,
+default $0.10 — output length is unknown until the model runs, so the
+floor bounds unbilled-compute exposure per request), and settles each
+request with `settle_prepaid`: the metered quote is debited into the
+fee split, atomically — `InsufficientBalance` moves nothing and the
+request stays settleable after a top-up. Both shortfall cases surface
+as HTTP 402 with the exact balance and amount due;
+`GET /inference/v1/balance` is the customer's read. Production deposits
+arrive as bridged stablecoins credited ledger-side.
+
+## 5. What this does NOT solve yet
+
+- **The bridge-to-ledger deposit pipeline.** `customer_deposit` is the
+  ledger-side credit; watching bridge transfers and crediting the right
+  customer is the ops wiring that remains.
 - **Receipt commitment wiring.** The verifier hook exists; the default is
   structural. Wiring `LTPProtocol.commit` for request/response digests +
   anchoring is the hardening step that makes billing independently
@@ -84,7 +100,7 @@ and token totals for dashboards (the provider portal's demand-side panel).
   why receipts carry `node_id` from day one.
 - **The model itself.** This is the pipe and the till, not the weights.
 
-## 5. Reading order
+## 6. Reading order
 
 1. `DEFERRED_TOKEN_ARCHITECTURE.md` — why stablecoin-native
 2. `VALIDATOR_COMPUTE_INCENTIVES.md` — the supply side (proof-gated pay)
