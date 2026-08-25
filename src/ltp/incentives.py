@@ -71,6 +71,7 @@ __all__ = [
     "EvictionConfirmation",
     "EpochPayoutSnapshot",
     "IncentiveConfig",
+    "LedgerError",
     "MeteredWorkReport",
     "NodeIncentive",
     "NodeIncentiveAccount",
@@ -217,11 +218,27 @@ class StablecoinLedger:
     """Book-keeping for every stablecoin unit the incentive layer holds.
 
     Solvency invariant (checked, not assumed): the sum of the operator
-    pool, insurance pool, treasury, and all node bonds always equals
-    total deposits minus total withdrawals. Nothing here can mint.
+    pool, insurance pool, treasury, all node bonds, and all customer
+    balances always equals total deposits minus total withdrawals.
+    Nothing here can mint.
+
+    **Thread safety.** Every balance mutation is a read-modify-write, so
+    the invariant is only meaningful if those are serialized: a deposit
+    landing between another thread's read and write would otherwise be
+    silently lost — or worse, double-counted, fabricating money the
+    ledger does not hold. Real deployments hit this immediately: the
+    bridge deposit poller credits balances from its own thread while the
+    gateway debits them on the request path. Every mutator and the
+    invariant read therefore hold ``_lock`` (reentrant, because the
+    movement helpers call ``account()``). Callers needing a multi-step
+    atomic sequence should hold ``ledger.lock`` around it.
     """
 
     def __init__(self, config: IncentiveConfig | None = None) -> None:
+        import threading
+
+        # Reentrant: pay_from_pool / slash_bond / refund_bond call account().
+        self._lock = threading.RLock()
         self.config = config or IncentiveConfig()
         self.operator_pool_micro: int = 0
         self.insurance_pool_micro: int = 0
@@ -231,17 +248,24 @@ class StablecoinLedger:
         self._total_deposited: int = 0
         self._total_withdrawn: int = 0
 
+    @property
+    def lock(self):
+        """The ledger's reentrant lock, for callers composing atomic steps."""
+        return self._lock
+
     # --- Accounts ---
 
     def account(self, node_id: str) -> NodeIncentiveAccount:
         """Fetch (or lazily create) the account for ``node_id``."""
-        if node_id not in self._accounts:
-            self._accounts[node_id] = NodeIncentiveAccount(node_id=node_id)
-        return self._accounts[node_id]
+        with self._lock:
+            if node_id not in self._accounts:
+                self._accounts[node_id] = NodeIncentiveAccount(node_id=node_id)
+            return self._accounts[node_id]
 
     def accounts(self) -> list[NodeIncentiveAccount]:
         """All accounts, in insertion order."""
-        return list(self._accounts.values())
+        with self._lock:
+            return list(self._accounts.values())
 
     # --- Inflows ---
 
@@ -258,10 +282,11 @@ class StablecoinLedger:
         insurance = amount_micro * cfg.fee_insurance_share_bps // 10_000
         treasury = amount_micro * cfg.fee_treasury_share_bps // 10_000
         operator = amount_micro - insurance - treasury
-        self.operator_pool_micro += operator
-        self.insurance_pool_micro += insurance
-        self.treasury_micro += treasury
-        self._total_deposited += amount_micro
+        with self._lock:
+            self.operator_pool_micro += operator
+            self.insurance_pool_micro += insurance
+            self.treasury_micro += treasury
+            self._total_deposited += amount_micro
         return operator, insurance, treasury
 
     def fund_incentive_budget(self, amount_micro: int) -> None:
@@ -272,15 +297,17 @@ class StablecoinLedger:
         """
         if amount_micro < 0:
             raise LedgerError("budget funding must be non-negative")
-        self.operator_pool_micro += amount_micro
-        self._total_deposited += amount_micro
+        with self._lock:
+            self.operator_pool_micro += amount_micro
+            self._total_deposited += amount_micro
 
     def post_bond(self, node_id: str, amount_micro: int) -> None:
         """Deposit ``amount_micro`` into ``node_id``'s bond."""
         if amount_micro < 0:
             raise LedgerError("bond must be non-negative")
-        self.account(node_id).bond_micro += amount_micro
-        self._total_deposited += amount_micro
+        with self._lock:
+            self.account(node_id).bond_micro += amount_micro
+            self._total_deposited += amount_micro
 
     # --- Customer accounts (prepaid balances) ---
 
@@ -296,15 +323,17 @@ class StablecoinLedger:
             raise LedgerError("customer_id must be non-empty")
         if amount_micro < 0:
             raise LedgerError("deposit must be non-negative")
-        self._customer_balances[customer_id] = (
-            self._customer_balances.get(customer_id, 0) + amount_micro
-        )
-        self._total_deposited += amount_micro
-        return self._customer_balances[customer_id]
+        with self._lock:
+            self._customer_balances[customer_id] = (
+                self._customer_balances.get(customer_id, 0) + amount_micro
+            )
+            self._total_deposited += amount_micro
+            return self._customer_balances[customer_id]
 
     def customer_balance(self, customer_id: str) -> int:
         """A customer's current prepaid balance in micro (0 if unknown)."""
-        return self._customer_balances.get(customer_id, 0)
+        with self._lock:
+            return self._customer_balances.get(customer_id, 0)
 
     def customer_debit_to_fees(self, customer_id: str, amount_micro: int) -> tuple[int, int, int]:
         """Debit a customer's balance into the fee split.
@@ -316,24 +345,30 @@ class StablecoinLedger:
         """
         if amount_micro < 0:
             raise LedgerError("debit must be non-negative")
-        balance = self._customer_balances.get(customer_id, 0)
-        if balance < amount_micro:
-            raise LedgerError(f"insufficient customer balance: have {balance}, need {amount_micro}")
-        self._customer_balances[customer_id] = balance - amount_micro
         cfg = self.config
-        insurance = amount_micro * cfg.fee_insurance_share_bps // 10_000
-        treasury = amount_micro * cfg.fee_treasury_share_bps // 10_000
-        operator = amount_micro - insurance - treasury
-        self.operator_pool_micro += operator
-        self.insurance_pool_micro += insurance
-        self.treasury_micro += treasury
+        # Check and debit under one lock hold: a concurrent debit must not
+        # be able to spend the same balance twice.
+        with self._lock:
+            balance = self._customer_balances.get(customer_id, 0)
+            if balance < amount_micro:
+                raise LedgerError(
+                    f"insufficient customer balance: have {balance}, need {amount_micro}"
+                )
+            self._customer_balances[customer_id] = balance - amount_micro
+            insurance = amount_micro * cfg.fee_insurance_share_bps // 10_000
+            treasury = amount_micro * cfg.fee_treasury_share_bps // 10_000
+            operator = amount_micro - insurance - treasury
+            self.operator_pool_micro += operator
+            self.insurance_pool_micro += insurance
+            self.treasury_micro += treasury
         return operator, insurance, treasury
 
     def customer_refund(self, customer_id: str) -> int:
         """Return a customer's entire remaining balance (withdrawal)."""
-        refund = self._customer_balances.pop(customer_id, 0)
-        self._total_withdrawn += refund
-        return refund
+        with self._lock:
+            refund = self._customer_balances.pop(customer_id, 0)
+            self._total_withdrawn += refund
+            return refund
 
     # --- Internal movements ---
 
@@ -345,12 +380,13 @@ class StablecoinLedger:
         """
         if amount_micro < 0:
             raise LedgerError("payment must be non-negative")
-        paid = min(amount_micro, self.operator_pool_micro)
-        self.operator_pool_micro -= paid
-        acct = self.account(node_id)
-        acct.paid_total_micro += paid
-        self._total_withdrawn += paid
-        return paid
+        with self._lock:
+            paid = min(amount_micro, self.operator_pool_micro)
+            self.operator_pool_micro -= paid
+            acct = self.account(node_id)
+            acct.paid_total_micro += paid
+            self._total_withdrawn += paid
+            return paid
 
     def slash_bond(self, node_id: str, amount_micro: int) -> int:
         """Move up to ``amount_micro`` from the node's bond to insurance.
@@ -359,48 +395,62 @@ class StablecoinLedger:
         """
         if amount_micro < 0:
             raise LedgerError("slash must be non-negative")
-        acct = self.account(node_id)
-        slashed = min(amount_micro, acct.bond_micro)
-        acct.bond_micro -= slashed
-        acct.slashed_total_micro += slashed
-        self.insurance_pool_micro += slashed
-        return slashed
+        with self._lock:
+            acct = self.account(node_id)
+            slashed = min(amount_micro, acct.bond_micro)
+            acct.bond_micro -= slashed
+            acct.slashed_total_micro += slashed
+            self.insurance_pool_micro += slashed
+            return slashed
 
     def refund_bond(self, node_id: str) -> int:
         """Return a node's remaining bond (withdrawal). Returns amount."""
-        acct = self.account(node_id)
-        refund = acct.bond_micro
-        acct.bond_micro = 0
-        self._total_withdrawn += refund
-        return refund
+        with self._lock:
+            acct = self.account(node_id)
+            refund = acct.bond_micro
+            acct.bond_micro = 0
+            self._total_withdrawn += refund
+            return refund
 
     def forfeit_bond_to_insurance(self, node_id: str) -> int:
         """Forfeit a node's entire remaining bond to the insurance pool."""
-        acct = self.account(node_id)
-        forfeited = acct.bond_micro
-        acct.bond_micro = 0
-        acct.slashed_total_micro += forfeited
-        self.insurance_pool_micro += forfeited
-        return forfeited
+        with self._lock:
+            acct = self.account(node_id)
+            forfeited = acct.bond_micro
+            acct.bond_micro = 0
+            acct.slashed_total_micro += forfeited
+            self.insurance_pool_micro += forfeited
+            return forfeited
 
     # --- Invariant ---
 
     @property
     def total_held_micro(self) -> int:
-        """Every micro the ledger currently holds, across all buckets."""
-        bonds = sum(a.bond_micro for a in self._accounts.values())
-        customers = sum(self._customer_balances.values())
-        return (
-            self.operator_pool_micro
-            + self.insurance_pool_micro
-            + self.treasury_micro
-            + bonds
-            + customers
-        )
+        """Every micro the ledger currently holds, across all buckets.
+
+        Summed under the lock so the total is a consistent snapshot
+        rather than a smear across concurrent movements.
+        """
+        with self._lock:
+            bonds = sum(a.bond_micro for a in self._accounts.values())
+            customers = sum(self._customer_balances.values())
+            return (
+                self.operator_pool_micro
+                + self.insurance_pool_micro
+                + self.treasury_micro
+                + bonds
+                + customers
+            )
 
     def check_solvency(self) -> bool:
-        """True iff held == deposited - withdrawn. Never mints, never leaks."""
-        return self.total_held_micro == self._total_deposited - self._total_withdrawn
+        """True iff held == deposited - withdrawn. Never mints, never leaks.
+
+        Both sides are read under one lock hold — comparing two
+        independently-taken snapshots could report a false violation
+        (or hide a real one) mid-movement.
+        """
+        with self._lock:
+            return self.total_held_micro == self._total_deposited - self._total_withdrawn
 
 
 # ---------------------------------------------------------------------------

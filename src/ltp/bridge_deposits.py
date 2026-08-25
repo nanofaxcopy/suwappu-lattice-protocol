@@ -285,6 +285,8 @@ class BridgeEmitterDepositSource:
         events: list[DepositEvent] = []
         for log in logs:
             topics = [self._hex(topic) for topic in log["topics"]]
+            if len(topics) < 3:
+                continue  # not a BridgeTransfer shape; never guess a sender
             # topics[1] = indexed sender (left-padded to 32 bytes).
             sender = "0x" + topics[1][-40:]
             # Non-indexed data words: [string offset][amount][nonce]...

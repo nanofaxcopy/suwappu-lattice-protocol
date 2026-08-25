@@ -103,7 +103,25 @@ Anchoring the log's STHs on-chain rides the existing anchor pipeline
 (`AnchorScheduler` already anchors Merkle roots), which closes the loop
 to a fully on-chain-auditable bill.
 
-## 6. Running it
+## 6. Concurrency and the invariant
+
+The solvency invariant is only as strong as the synchronization under
+it. Every balance movement is a read-modify-write, and the shipped
+service runs at least two threads against one ledger — the bridge
+deposit poller credits while the gateway debits — so unsynchronized
+movement does not merely race, it *breaks the core claim*: a deposit
+landing mid-debit is silently lost, and interleaved updates can leave
+the ledger holding more than was ever deposited. Both directions were
+reproduced against this code before the fix. `StablecoinLedger`
+therefore serializes every mutator and the invariant read behind a
+reentrant lock, the check-and-debit is one atomic hold (so a balance
+cannot be spent twice), and `pay_from_pool`'s clamp is evaluated under
+the same hold (so concurrent payouts cannot overdraw the pool).
+`ledger.lock` is exposed for callers composing multi-step atomic
+sequences. Regression tests hammer all three paths and assert exact
+accounting, not just "still solvent".
+
+## 7. Running it
 
 `ltp.inference_service.build_inference_service` composes the whole
 marketplace — ledger, market, receipt log (STHs signed through the
@@ -132,7 +150,7 @@ verifying → epoch payout → solvency — runs as
 (`tests/test_inference_service.py`), including under the implicit-HSM
 production posture the unit-test conftest normally disables.
 
-## 7. What this does NOT solve yet
+## 8. What this does NOT solve yet
 
 - **Receipt-log STH anchoring config.** The commitment log publishes
   signed heads; pointing the deployment's `AnchorScheduler` at it is
@@ -143,7 +161,7 @@ production posture the unit-test conftest normally disables.
   why receipts carry `node_id` from day one.
 - **The model itself.** This is the pipe and the till, not the weights.
 
-## 8. Reading order
+## 9. Reading order
 
 1. `DEFERRED_TOKEN_ARCHITECTURE.md` — why stablecoin-native
 2. `VALIDATOR_COMPUTE_INCENTIVES.md` — the supply side (proof-gated pay)

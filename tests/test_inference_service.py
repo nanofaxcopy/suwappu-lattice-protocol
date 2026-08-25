@@ -436,3 +436,64 @@ class TestFullLoopOverHTTP:
             assert service.ledger.check_solvency()
         finally:
             service.stop()
+
+
+class TestServiceConcurrencySolvency:
+    """The composed system under the concurrency it actually ships with:
+    the deposit poller crediting on its own thread while completions
+    debit on the request path. Solvency must hold across the whole run.
+    """
+
+    def test_polling_deposits_while_serving_completions_stays_solvent(self):
+        import sys
+        import threading
+
+        # 40 distinct funded deposits, all confirmed, delivered by the
+        # poller as fast as it can while requests are being billed.
+        logs = [make_log(amount_units=100_000, block=100, tx="0x" + f"{i:064x}") for i in range(40)]
+        client = StubWeb3(block_number=200, logs=logs)
+        service = build_inference_service(
+            InferenceServiceConfig(
+                host="127.0.0.1", port=0, node_id="gpu-node-1", deposit_poll_seconds=0.001
+            ),
+            deposit_source=make_source(client),
+        )
+        service.deposits.bind_address(ADDRESS, "cust-alice")
+        service.ledger.customer_deposit("cust-alice", 5_000_000)
+        service.start()
+        previous = sys.getswitchinterval()
+        sys.setswitchinterval(1e-6)
+        errors: list[Exception] = []
+        try:
+
+            def buyer():
+                for _ in range(15):
+                    try:
+                        _http_json(
+                            f"{service.url}/inference/v1/chat/completions",
+                            payload={
+                                "model": "suwappu-1",
+                                "messages": [{"role": "user", "content": "concurrent"}],
+                            },
+                            headers={"x-suwappu-customer": "cust-alice"},
+                        )
+                    except Exception as exc:  # noqa: BLE001 - recorded, not swallowed
+                        errors.append(exc)
+
+            buyers = [threading.Thread(target=buyer) for _ in range(4)]
+            for thread in buyers:
+                thread.start()
+            for thread in buyers:
+                thread.join()
+        finally:
+            sys.setswitchinterval(previous)
+            service.stop()
+
+        assert errors == [], f"requests failed: {errors[:3]}"
+        assert service.market.settled_count == 60
+        # Every deposit credited exactly once, every bill debited exactly
+        # once, and the books balance to the micro.
+        assert service.deposits.credited_count == 40
+        assert service.ledger.check_solvency()
+        expected_balance = 5_000_000 + 40 * 100_000 - service.market.revenue_micro()
+        assert service.ledger.customer_balance("cust-alice") == expected_balance

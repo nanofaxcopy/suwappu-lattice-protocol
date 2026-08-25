@@ -459,3 +459,95 @@ class TestAdmission:
             "n1", storage_proof=object(), bond=ledger.config.min_bond_micro
         )
         assert decision == AdmissionDecision.REJECTED_EVICTED
+
+
+# ---------------------------------------------------------------------------
+# Concurrency — the solvency invariant under parallel movement
+# ---------------------------------------------------------------------------
+
+
+class TestLedgerConcurrency:
+    """Regression: balance mutation is read-modify-write, so unsynchronized
+    concurrent movement silently lost customer funds AND fabricated money
+    the ledger did not hold (observed drift in both directions before the
+    lock landed). Real deployments hit this the moment the bridge deposit
+    poller credits from its own thread while the gateway debits on the
+    request path.
+    """
+
+    def _hammer(self, targets):
+        import sys
+        import threading
+
+        previous = sys.getswitchinterval()
+        sys.setswitchinterval(1e-6)  # force preemption inside RMW sequences
+        try:
+            threads = [threading.Thread(target=fn) for fn in targets]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+        finally:
+            sys.setswitchinterval(previous)
+
+    def test_concurrent_deposit_and_debit_preserve_solvency(self):
+        ledger = make_ledger()
+        ledger.customer_deposit("alice", 10_000_000)
+        rounds = 2_000
+        shortfalls = []
+
+        def depositor():
+            for _ in range(rounds):
+                ledger.customer_deposit("alice", 10)
+
+        def debiter():
+            for _ in range(rounds):
+                try:
+                    ledger.customer_debit_to_fees("alice", 10)
+                except Exception as exc:  # noqa: BLE001 - recorded, not swallowed
+                    shortfalls.append(exc)
+
+        self._hammer([depositor, debiter])
+        assert shortfalls == []
+        assert ledger.check_solvency()
+        # Exact accounting, not just "solvent": every micro landed once.
+        assert ledger.customer_balance("alice") == 10_000_000
+        assert (
+            ledger.operator_pool_micro + ledger.insurance_pool_micro + (ledger.treasury_micro)
+            == rounds * 10
+        )
+
+    def test_concurrent_debits_cannot_double_spend_one_balance(self):
+        ledger = make_ledger()
+        ledger.customer_deposit("alice", 1_000)  # funds exactly 100 debits of 10
+        succeeded = []
+
+        def debiter():
+            for _ in range(200):
+                try:
+                    ledger.customer_debit_to_fees("alice", 10)
+                    succeeded.append(1)
+                except Exception:  # noqa: BLE001 - expected once drained
+                    pass
+
+        self._hammer([debiter, debiter])
+        assert len(succeeded) == 100, "balance was spent more than once"
+        assert ledger.customer_balance("alice") == 0
+        assert ledger.check_solvency()
+
+    def test_concurrent_pool_payouts_never_overdraw(self):
+        ledger = make_ledger()
+        ledger.fund_incentive_budget(1_000)
+        paid = []
+
+        def payer(node):
+            def run():
+                for _ in range(200):
+                    paid.append(ledger.pay_from_pool(node, 10))
+
+            return run
+
+        self._hammer([payer("n1"), payer("n2")])
+        assert sum(paid) == 1_000, "pool paid out more or less than it held"
+        assert ledger.operator_pool_micro == 0
+        assert ledger.check_solvency()

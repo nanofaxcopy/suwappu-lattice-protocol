@@ -103,6 +103,22 @@ public-surface promise and the cross-version compatibility matrix.
   LTP-A-014 (KyberSlash audit — confirmed-OK + pin tightened),
   LTP-A-022 (cross-language BLS DST pinning — confirmed-OK)
 
+### Fixed
+- **Ledger solvency under concurrency.** Balance movements are
+  read-modify-write and the shipped service runs the bridge deposit
+  poller on its own thread against the same `StablecoinLedger` the
+  gateway debits, so unsynchronized movement broke the invariant the
+  whole economic design rests on — reproduced losing customer funds
+  *and* fabricating micro the ledger never held. Every mutator, the
+  check-and-debit sequence, `pay_from_pool`'s clamp, and the invariant
+  read now hold a reentrant lock (`ledger.lock` exposed for multi-step
+  atomicity); `InferenceMarket` guards its settled-set and revenue
+  counters; `settle_prepaid` defers to the ledger's locked
+  check-and-debit instead of reading the balance first. Regression
+  tests assert exact accounting across concurrent deposit/debit,
+  double-spend, and pool-overdraw paths, plus a service-level test
+  billing completions from four threads while the poller credits
+
 ### Changed
 - `CHANGELOG.md` entries now flag breaking changes inline with `**[BREAKING]**`
 

@@ -57,7 +57,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from .incentives import StablecoinLedger
+from .incentives import LedgerError, StablecoinLedger
 
 __all__ = [
     "InferenceError",
@@ -212,6 +212,12 @@ class InferenceMarket:
     ) -> None:
         if min_balance_to_serve_micro < 0:
             raise ValueError("min_balance_to_serve_micro must be non-negative")
+        import threading
+
+        # Guards the settled-request set and the revenue/token counters:
+        # they are read-modify-write, and a deployment may settle from
+        # more than one thread (the gateway plus operator tooling).
+        self._lock = threading.Lock()
         self.ledger = ledger
         self._verify_receipt = receipt_verifier or (lambda receipt: True)
         # Floor a customer must hold before a request is served at all.
@@ -271,15 +277,16 @@ class InferenceMarket:
         if not account.evicted:
             account.earned_claim_micro += operator
 
-        self._settled_requests.add(receipt.request_id)
-        self._revenue_by_model[receipt.model_id] = (
-            self._revenue_by_model.get(receipt.model_id, 0) + revenue_micro
-        )
-        self._tokens_by_model[receipt.model_id] = (
-            self._tokens_by_model.get(receipt.model_id, 0)
-            + receipt.input_tokens
-            + receipt.output_tokens
-        )
+        with self._lock:
+            self._settled_requests.add(receipt.request_id)
+            self._revenue_by_model[receipt.model_id] = (
+                self._revenue_by_model.get(receipt.model_id, 0) + revenue_micro
+            )
+            self._tokens_by_model[receipt.model_id] = (
+                self._tokens_by_model.get(receipt.model_id, 0)
+                + receipt.input_tokens
+                + receipt.output_tokens
+            )
         return InferenceSettlement(
             request_id=receipt.request_id,
             node_id=receipt.node_id,
@@ -321,10 +328,16 @@ class InferenceMarket:
         if not customer_id:
             raise InferenceError("customer_id must be non-empty")
         due = self._validate_for_settlement(receipt)
-        balance = self.ledger.customer_balance(customer_id)
-        if balance < due:
-            raise InsufficientBalance(customer_id, balance, due)
-        split = self.ledger.customer_debit_to_fees(customer_id, due)
+        # Let the ledger's locked check-and-debit be the authority: reading
+        # the balance first and debiting second would leave a window for a
+        # concurrent debit to spend it, so a shortfall is detected by the
+        # debit itself and re-raised in this module's vocabulary.
+        try:
+            split = self.ledger.customer_debit_to_fees(customer_id, due)
+        except LedgerError:
+            raise InsufficientBalance(
+                customer_id, self.ledger.customer_balance(customer_id), due
+            ) from None
         return self._record_settlement(receipt, due, split, customer_id=customer_id)
 
     # --- Introspection ---
