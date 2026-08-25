@@ -170,6 +170,49 @@ class TestCompletions:
         body = dict(BODY, model="missing-model")
         assert client.post("/inference/v1/chat/completions", json=body).status_code == 404
 
+    def test_unlisted_model_is_not_reflected_in_the_error_body(self, client):
+        """The 404 must not echo the request's model name back.
+
+        CodeQL flagged the request-derived model id reaching a log line
+        (py/log-injection); the same value was also being interpolated
+        into this error body. Both are now cut off at the pricing
+        lookup, and this pins the response half.
+        """
+        marker = "canary-\n\rINJECTED-LOG-LINE"
+        body = dict(BODY, model=marker)
+        response = client.post("/inference/v1/chat/completions", json=body)
+        assert response.status_code == 404
+        assert marker not in response.text
+        assert "INJECTED" not in response.text
+
+    def test_backend_failure_logs_only_the_listed_model_id(self, market, caplog):
+        """A failing backend must log the operator's id, never the caller's.
+
+        Log records are the artifact an operator reads during an
+        incident; a model name carrying newlines could otherwise forge
+        entries in it. The request never reaches the backend unless it
+        matched a listing, so the listed id is the only safe thing to
+        name — this asserts that is what gets logged.
+        """
+        import logging
+
+        def broken_backend(model_id, messages):
+            raise RuntimeError("model runtime down")
+
+        app = create_app(GatewayConfig(jwt_enabled=False))
+        app.state.inference_market = market
+        app.state.inference_backend = broken_backend
+        market.ledger.customer_deposit(CUSTOMER, 10_000_000)
+
+        with caplog.at_level(logging.ERROR, logger="ltp.gateway.routers.inference"):
+            response = TestClient(app).post(
+                "/inference/v1/chat/completions", json=BODY, headers=HEADERS
+            )
+
+        assert response.status_code == 502
+        messages = [record.getMessage() for record in caplog.records]
+        assert "inference backend failed for model suwappu-1" in messages
+
     def test_502_when_backend_raises(self, market):
         def broken_backend(model_id, messages):
             raise RuntimeError("model runtime down")

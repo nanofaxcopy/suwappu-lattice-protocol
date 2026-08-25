@@ -11,6 +11,16 @@ public-surface promise and the cross-version compatibility matrix.
 
 ## [Unreleased]
 
+### Fixed
+- Inference gateway no longer routes the request's own model name into
+  a log line or an error body. CodeQL flagged it as a high-severity
+  `py/log-injection`: a model id carrying newlines forges entries in the
+  log an operator reads during an incident, and the same value was
+  being reflected back in the 404. The pricing lookup now returns the
+  listing and the operator-registered `pricing.model_id` is used
+  downstream, so neither hazard survives; two regression tests pin it,
+  verified to fail with the fix reverted
+
 ### Added
 - `docs/economics/BILLING_LEDGER_GAP_ANALYSIS.md`: measures the shipped
   billing surface against production ledger practice (Modern Treasury

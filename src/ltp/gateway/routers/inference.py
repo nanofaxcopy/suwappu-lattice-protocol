@@ -112,10 +112,18 @@ async def chat_completions(request: Request) -> JSONResponse:
     if not isinstance(messages, list) or not messages:
         return JSONResponse(error_response(400, "missing messages"), 400)
 
+    # Resolve the request's model name against the operator-registered
+    # listing and use the *listing's* id downstream. Two reasons, and
+    # both matter: the request body is attacker-controlled, so echoing
+    # it into a log line forges log entries (CodeQL py/log-injection),
+    # and echoing it into an error body reflects unbounded input back to
+    # the caller. Past this point `pricing.model_id` is an operator-set
+    # value, so neither hazard survives.
     try:
-        market.pricing_for(model_id)
+        pricing = market.pricing_for(model_id)
     except InferenceError:
-        return JSONResponse(error_response(404, f"model not listed: {model_id}"), 404)
+        return JSONResponse(error_response(404, "model not listed"), 404)
+    model_id = pricing.model_id
 
     # Prepaid floor: don't burn model compute for a customer whose
     # balance couldn't plausibly cover the response. Output length is
