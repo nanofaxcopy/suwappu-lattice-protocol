@@ -65,11 +65,11 @@ from ``ltp.__init__`` yet (private per ``docs/STABILITY_PROMISES.md``).
 
 from __future__ import annotations
 
-import hashlib
 import re
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from .dual_lane.hashing import spec_hash_hex
 from .incentives import LedgerError, StablecoinLedger
 
 __all__ = [
@@ -109,13 +109,16 @@ class InsufficientBalance(InferenceError):
 
 
 def receipt_digest(payload: bytes) -> str:
-    """Canonical SHA3-256 hex digest for request/response bodies.
+    """Protocol-frozen SHA3-256 hex digest for request/response bodies.
 
-    SHA3-256 is the canonical/on-chain lane of the dual-lane hashing
-    architecture, which is what a billing artifact that may later be
-    committed on-chain must use.
+    Routed through ``spec_hash_hex`` rather than the canonical-lane
+    helpers deliberately: a receipt digest is anchored on-chain through
+    the commitment log and recomputed by customers from bodies they
+    already hold, so it must stay byte-stable across profile changes.
+    Following the active ``SecurityProfile`` would let a profile switch
+    to SHA-384/512 invalidate every receipt issued before it.
     """
-    return hashlib.sha3_256(payload).hexdigest()
+    return spec_hash_hex(payload)
 
 
 # ---------------------------------------------------------------------------
