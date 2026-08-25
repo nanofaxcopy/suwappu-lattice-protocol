@@ -80,6 +80,13 @@ class InferenceServiceConfig:
     min_confirmations: int = 6
     jwt_enabled: bool = False
     backend_url: str = ""  # empty -> echo backend
+    # Chain deposit polling (all three required to activate):
+    bridge_rpc_url: str = ""
+    bridge_emitter: str = ""
+    bridge_deposit_recipient: str = ""
+    bridge_start_block: int = 0
+    bridge_amount_divisor: int = 1
+    deposit_poll_seconds: float = 15.0
 
     @classmethod
     def from_env(cls, prefix: str = "SUWAPPU_INFER_") -> "InferenceServiceConfig":
@@ -104,6 +111,16 @@ class InferenceServiceConfig:
             min_confirmations=_int("MIN_CONFIRMATIONS", defaults.min_confirmations),
             jwt_enabled=_str("JWT_ENABLED", "") == "1",
             backend_url=_str("BACKEND_URL", defaults.backend_url),
+            bridge_rpc_url=_str("BRIDGE_RPC_URL", defaults.bridge_rpc_url),
+            bridge_emitter=_str("BRIDGE_EMITTER", defaults.bridge_emitter),
+            bridge_deposit_recipient=_str(
+                "BRIDGE_DEPOSIT_RECIPIENT", defaults.bridge_deposit_recipient
+            ),
+            bridge_start_block=_int("BRIDGE_START_BLOCK", defaults.bridge_start_block),
+            bridge_amount_divisor=_int("BRIDGE_AMOUNT_DIVISOR", defaults.bridge_amount_divisor),
+            deposit_poll_seconds=float(
+                _str("DEPOSIT_POLL_SECONDS", str(defaults.deposit_poll_seconds))
+            ),
         )
 
 
@@ -178,6 +195,7 @@ class InferenceService:
         incentive,
         gateway,
         keypair,
+        deposit_source=None,
     ) -> None:
         self.config = config
         self.ledger = ledger
@@ -187,17 +205,67 @@ class InferenceService:
         self.incentive = incentive
         self.gateway = gateway
         self.keypair = keypair
+        self.deposit_source = deposit_source
         self._epoch = 0
+        self._poll_stop = None
+        self._poll_thread = None
 
     # --- Lifecycle ---
 
     def start(self) -> None:
-        """Start the HTTP gateway (daemon thread)."""
+        """Start the HTTP gateway and, when configured, deposit polling."""
         self.gateway.start()
+        if self.deposit_source is not None:
+            self.start_deposit_polling()
 
     def stop(self) -> None:
-        """Stop the HTTP gateway."""
+        """Stop deposit polling and the HTTP gateway."""
+        self.stop_deposit_polling()
         self.gateway.stop()
+
+    def poll_deposits_once(self):
+        """One synchronous deposit poll; returns the credits applied."""
+        if self.deposit_source is None:
+            return []
+        return self.deposits.poll_once(self.deposit_source)
+
+    def start_deposit_polling(self) -> None:
+        """Poll the chain for deposits on ``deposit_poll_seconds`` cadence.
+
+        A failed poll (RPC hiccup) is logged and retried on the next
+        tick — the watcher's idempotency makes missed-then-replayed
+        windows harmless.
+        """
+        import logging
+        import threading
+
+        if self._poll_thread is not None:
+            return
+        logger = logging.getLogger(__name__)
+        self._poll_stop = threading.Event()
+        stop = self._poll_stop
+
+        def _loop() -> None:
+            while not stop.is_set():
+                try:
+                    credited = self.poll_deposits_once()
+                    if credited:
+                        logger.info("credited %d bridge deposits", len(credited))
+                except Exception:
+                    logger.exception("deposit poll failed; retrying next tick")
+                stop.wait(self.config.deposit_poll_seconds)
+
+        self._poll_thread = threading.Thread(target=_loop, daemon=True, name="suwappu-deposit-poll")
+        self._poll_thread.start()
+
+    def stop_deposit_polling(self) -> None:
+        """Stop the deposit polling thread, if running."""
+        if self._poll_stop is not None:
+            self._poll_stop.set()
+        if self._poll_thread is not None:
+            self._poll_thread.join(timeout=5.0)
+        self._poll_stop = None
+        self._poll_thread = None
 
     @property
     def url(self) -> str:
@@ -219,6 +287,7 @@ def build_inference_service(
     config: InferenceServiceConfig | None = None,
     backend: Backend | None = None,
     keypair=None,
+    deposit_source=None,
 ) -> InferenceService:
     """Compose every subsystem into a runnable service.
 
@@ -257,6 +326,18 @@ def build_inference_service(
         )
     )
     deposits = DepositWatcher(ledger, min_confirmations=config.min_confirmations)
+    if deposit_source is None and (
+        config.bridge_rpc_url and config.bridge_emitter and config.bridge_deposit_recipient
+    ):
+        from .bridge_deposits import BridgeEmitterDepositSource
+
+        deposit_source = BridgeEmitterDepositSource.from_rpc_url(
+            config.bridge_rpc_url,
+            emitter_address=config.bridge_emitter,
+            deposit_recipient=config.bridge_deposit_recipient,
+            start_block=config.bridge_start_block,
+            amount_divisor=config.bridge_amount_divisor,
+        )
     incentive = StableNodeIncentive(ledger)
     gateway = GatewayServer(
         config=GatewayConfig(host=config.host, port=config.port, jwt_enabled=config.jwt_enabled),
@@ -275,4 +356,5 @@ def build_inference_service(
         incentive=incentive,
         gateway=gateway,
         keypair=keypair,
+        deposit_source=deposit_source,
     )

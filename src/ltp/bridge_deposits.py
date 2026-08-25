@@ -41,6 +41,7 @@ from typing import Callable, Iterable
 from .incentives import StablecoinLedger
 
 __all__ = [
+    "BridgeEmitterDepositSource",
     "CreditedDeposit",
     "DepositEvent",
     "DepositWatcher",
@@ -190,3 +191,114 @@ class DepositWatcher:
         event — every poll returns it again until credited — applies it.
         """
         return list(self._unattributed.values())
+
+
+# ---------------------------------------------------------------------------
+# Chain event source — BridgeEmitter.BridgeTransfer logs
+# ---------------------------------------------------------------------------
+
+# keccak256("BridgeTransfer(address,address,string,uint256,uint256)") —
+# the topic0 of contracts/src/BridgeEmitter.sol's event. Computed lazily
+# so the module imports without the optional `[chain]` extra installed.
+_BRIDGE_TRANSFER_SIGNATURE = "BridgeTransfer(address,address,string,uint256,uint256)"
+
+
+class BridgeEmitterDepositSource:
+    """Yields ``DepositEvent``s from on-chain ``BridgeTransfer`` logs.
+
+    Scans the configured ``BridgeEmitter`` contract for transfers whose
+    ``recipient`` is the network's deposit vault address, and converts
+    each into a ``DepositEvent`` (confirmations computed against the
+    chain head at poll time). Designed to feed
+    ``DepositWatcher.poll_once`` on an interval.
+
+    Robustness comes from division of labor: this source re-scans a
+    sliding block window every poll (``lookback_blocks``) and makes no
+    attempt to remember what it already reported — the watcher's
+    per-tx-hash idempotency makes replays free, so a crash, restart, or
+    reorg inside the window can never double-credit or silently skip.
+
+    ``client`` is a web3-compatible object (``client.eth.block_number``,
+    ``client.eth.get_logs``); ``from_rpc_url`` builds a real ``Web3``
+    (requires the ``[chain]`` extra). ``amount_divisor`` converts the
+    event's uint256 amount into ledger micro-units (1 when the bridge
+    already denominates in the stablecoin's 6-decimal base units).
+    """
+
+    def __init__(
+        self,
+        client,
+        emitter_address: str,
+        deposit_recipient: str,
+        start_block: int = 0,
+        lookback_blocks: int = 5_000,
+        amount_divisor: int = 1,
+    ) -> None:
+        if amount_divisor < 1:
+            raise DepositError("amount_divisor must be >= 1")
+        if start_block < 0 or lookback_blocks < 1:
+            raise DepositError("invalid block window")
+        self._client = client
+        self._emitter = _normalize_address(emitter_address)
+        self._recipient_topic = "0x" + _normalize_address(deposit_recipient)[2:].rjust(64, "0")
+        self._start_block = start_block
+        self._lookback_blocks = lookback_blocks
+        self._amount_divisor = amount_divisor
+        self._topic0: str | None = None
+
+    @classmethod
+    def from_rpc_url(cls, rpc_url: str, **kwargs) -> "BridgeEmitterDepositSource":
+        """Build against a real chain RPC (requires the ``[chain]`` extra)."""
+        from web3 import Web3
+
+        return cls(Web3(Web3.HTTPProvider(rpc_url)), **kwargs)
+
+    def _event_topic0(self) -> str:
+        if self._topic0 is None:
+            from web3 import Web3
+
+            self._topic0 = Web3.keccak(text=_BRIDGE_TRANSFER_SIGNATURE).hex()
+            if not self._topic0.startswith("0x"):
+                self._topic0 = "0x" + self._topic0
+        return self._topic0
+
+    @staticmethod
+    def _hex(value) -> str:
+        """Normalize bytes / HexBytes / str to a lowercase 0x-hex string."""
+        if isinstance(value, (bytes, bytearray)):
+            return "0x" + bytes(value).hex()
+        text = str(value).lower()
+        return text if text.startswith("0x") else "0x" + text
+
+    def __call__(self) -> list[DepositEvent]:
+        """One poll: scan the sliding window, return observed deposits."""
+        latest = int(self._client.eth.block_number)
+        from_block = max(self._start_block, latest - self._lookback_blocks + 1)
+        logs = self._client.eth.get_logs(
+            {
+                "address": self._emitter,
+                "fromBlock": from_block,
+                "toBlock": latest,
+                "topics": [self._event_topic0(), None, self._recipient_topic],
+            }
+        )
+        events: list[DepositEvent] = []
+        for log in logs:
+            topics = [self._hex(topic) for topic in log["topics"]]
+            # topics[1] = indexed sender (left-padded to 32 bytes).
+            sender = "0x" + topics[1][-40:]
+            # Non-indexed data words: [string offset][amount][nonce]...
+            data = bytes.fromhex(self._hex(log["data"])[2:])
+            if len(data) < 96:
+                continue  # malformed log; never guess an amount
+            amount_units = int.from_bytes(data[32:64], "big")
+            block_number = int(log["blockNumber"])
+            events.append(
+                DepositEvent(
+                    tx_hash=self._hex(log["transactionHash"]),
+                    sender=sender,
+                    amount_micro=amount_units // self._amount_divisor,
+                    confirmations=latest - block_number + 1,
+                )
+            )
+        return events

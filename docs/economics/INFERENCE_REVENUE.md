@@ -117,7 +117,15 @@ counts; `echo_backend()` serves dev. Bridged deposits credit through
 `ltp.bridge_deposits.DepositWatcher`: idempotent per tx hash,
 confirmation-gated (reorg exposure bounded by depth), and
 attribution-explicit — deposits from unbound addresses are quarantined
-for operations, never guessed into an account. The end-to-end loop —
+for operations, never guessed into an account. The chain side is
+`BridgeEmitterDepositSource`: it scans `BridgeEmitter.BridgeTransfer`
+logs for transfers to the deposit vault over a sliding block window
+(re-scans are free under the watcher's idempotency, so restarts and
+RPC hiccups can neither double-credit nor silently skip), and the
+service polls it on a background thread (`SUWAPPU_INFER_BRIDGE_RPC_URL`
+/ `_BRIDGE_EMITTER` / `_BRIDGE_DEPOSIT_RECIPIENT` activate it). With
+that set, the full money path is automatic: a customer sends
+stablecoins on-chain and their prepaid balance appears. The end-to-end loop —
 deposit → completion over real HTTP → committed bill → audit proof
 verifying → epoch payout → solvency — runs as
 `examples/inference_marketplace.py` and as an integration test
@@ -126,10 +134,6 @@ production posture the unit-test conftest normally disables.
 
 ## 7. What this does NOT solve yet
 
-- **The chain-event adapter.** `DepositWatcher` owns the crediting
-  rules; the production event source that reads
-  `BridgeEmitter.BridgeTransfer` logs and yields `DepositEvent`s is
-  deployment wiring against the live chain client.
 - **Receipt-log STH anchoring config.** The commitment log publishes
   signed heads; pointing the deployment's `AnchorScheduler` at it is
   deployment wiring, not new mechanism.

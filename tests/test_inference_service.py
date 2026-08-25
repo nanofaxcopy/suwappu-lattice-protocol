@@ -10,6 +10,13 @@ Covers:
     against a local stub HTTP server (token counts from usage)
   - build_inference_service under the implicit-HSM default: the
     receipt log signs STHs through KeyPair.sign (LTP-A-032)
+  - BridgeEmitterDepositSource: BridgeTransfer log decoding against a
+    stub web3 client (sender topic, amount word, confirmations from
+    chain head), recipient filtering by topic, sliding-window rescan
+    made free by watcher idempotency, amount divisor, malformed-data
+    skip
+  - Background deposit polling: start()/stop() lifecycle crediting the
+    ledger from the injected source
   - The full loop over REAL HTTP (uvicorn, ephemeral port): deposit ->
     completion -> committed bill -> audit bundle verifies -> epoch
     payout -> ledger solvency
@@ -24,7 +31,12 @@ import urllib.request
 
 import pytest
 
-from src.ltp.bridge_deposits import DepositError, DepositEvent, DepositWatcher
+from src.ltp.bridge_deposits import (
+    BridgeEmitterDepositSource,
+    DepositError,
+    DepositEvent,
+    DepositWatcher,
+)
 from src.ltp.incentives import IncentiveConfig, StablecoinLedger
 from src.ltp.inference_service import (
     InferenceServiceConfig,
@@ -107,6 +119,150 @@ class TestDepositWatcher:
         watcher.bind_address(ADDRESS.upper().replace("0X", "0x"), "alice")
         credited = watcher.process([make_event()])
         assert credited[0].customer_id == "alice"
+
+
+# ---------------------------------------------------------------------------
+# Chain event source
+# ---------------------------------------------------------------------------
+
+EMITTER = "0x" + "ee" * 20
+VAULT = "0x" + "cc" * 20
+TOPIC0 = None  # resolved lazily via the source itself
+
+
+def make_log(sender=ADDRESS, recipient=VAULT, amount_units=1_000_000, block=100, tx=TX):
+    """A raw eth_getLogs-shaped BridgeTransfer log entry."""
+    data = (
+        (0x60).to_bytes(32, "big")  # offset of the payloadHash string
+        + amount_units.to_bytes(32, "big")
+        + (7).to_bytes(32, "big")  # nonce
+        + (0).to_bytes(32, "big")  # empty string length
+    )
+    return {
+        "topics": [
+            bytes.fromhex("00" * 32),  # replaced with real topic0 by the stub
+            bytes.fromhex("00" * 12 + sender[2:]),
+            bytes.fromhex("00" * 12 + recipient[2:]),
+        ],
+        "data": data,
+        "transactionHash": bytes.fromhex(tx[2:]),
+        "blockNumber": block,
+    }
+
+
+class StubEth:
+    def __init__(self, block_number, logs):
+        self.block_number = block_number
+        self._logs = logs
+        self.last_filter = None
+
+    def get_logs(self, log_filter):
+        self.last_filter = log_filter
+        # Honor the recipient topic filter the way a node would.
+        recipient_topic = log_filter["topics"][2]
+        out = []
+        for log in self._logs:
+            topic2 = "0x" + log["topics"][2].hex()
+            if topic2 == recipient_topic:
+                out.append(log)
+        return out
+
+
+class StubWeb3:
+    def __init__(self, block_number, logs):
+        self.eth = StubEth(block_number, logs)
+
+
+def make_source(client, **overrides):
+    kwargs = dict(
+        client=client,
+        emitter_address=EMITTER,
+        deposit_recipient=VAULT,
+        start_block=0,
+        lookback_blocks=5_000,
+        amount_divisor=1,
+    )
+    kwargs.update(overrides)
+    return BridgeEmitterDepositSource(**kwargs)
+
+
+class TestBridgeEmitterDepositSource:
+    def test_decodes_logs_into_events(self):
+        client = StubWeb3(block_number=111, logs=[make_log(block=100)])
+        events = make_source(client)()
+        assert len(events) == 1
+        event = events[0]
+        assert event.sender == ADDRESS
+        assert event.amount_micro == 1_000_000
+        assert event.tx_hash == TX
+        assert event.confirmations == 111 - 100 + 1
+        # The filter asked for the emitter + recipient topic.
+        assert client.eth.last_filter["address"] == EMITTER
+        assert client.eth.last_filter["topics"][2] == "0x" + "00" * 12 + "cc" * 20
+
+    def test_recipient_filter_excludes_other_transfers(self):
+        stray = make_log(recipient="0x" + "dd" * 20, tx="0x" + "22" * 32)
+        client = StubWeb3(block_number=111, logs=[make_log(), stray])
+        events = make_source(client)()
+        assert len(events) == 1
+
+    def test_amount_divisor(self):
+        # Bridge denominates in 18-decimal wei; ledger wants 6-decimal micro.
+        client = StubWeb3(block_number=111, logs=[make_log(amount_units=5 * 10**18)])
+        events = make_source(client, amount_divisor=10**12)()
+        assert events[0].amount_micro == 5_000_000
+
+    def test_malformed_data_skipped(self):
+        log = make_log()
+        log["data"] = b"\x00" * 40  # too short to carry an amount
+        client = StubWeb3(block_number=111, logs=[log])
+        assert make_source(client)() == []
+
+    def test_sliding_window_rescan_is_idempotent_via_watcher(self):
+        ledger = StablecoinLedger(IncentiveConfig())
+        watcher = DepositWatcher(ledger, min_confirmations=6)
+        watcher.bind_address(ADDRESS, "alice")
+        client = StubWeb3(block_number=200, logs=[make_log(block=100)])
+        source = make_source(client)
+        assert len(watcher.poll_once(source)) == 1
+        # Next poll re-scans the same window; nothing double-credits.
+        assert watcher.poll_once(source) == []
+        assert ledger.customer_balance("alice") == 1_000_000
+        assert ledger.check_solvency()
+
+    def test_bad_construction_rejected(self):
+        with pytest.raises(DepositError):
+            make_source(StubWeb3(1, []), amount_divisor=0)
+        with pytest.raises(DepositError):
+            make_source(StubWeb3(1, []), emitter_address="nope")
+
+
+class TestDepositPolling:
+    def test_background_polling_credits_ledger(self):
+        client = StubWeb3(block_number=200, logs=[make_log(block=100)])
+        service = build_inference_service(
+            InferenceServiceConfig(host="127.0.0.1", port=0, deposit_poll_seconds=0.05),
+            deposit_source=make_source(client),
+        )
+        service.deposits.bind_address(ADDRESS, "cust-alice")
+        service.start()
+        try:
+            import time
+
+            deadline = time.time() + 5
+            while time.time() < deadline:
+                if service.ledger.customer_balance("cust-alice") == 1_000_000:
+                    break
+                time.sleep(0.02)
+            assert service.ledger.customer_balance("cust-alice") == 1_000_000
+            assert service.ledger.check_solvency()
+        finally:
+            service.stop()
+        assert service._poll_thread is None
+
+    def test_poll_once_without_source_is_noop(self):
+        service = build_inference_service(InferenceServiceConfig(port=0))
+        assert service.poll_deposits_once() == []
 
 
 # ---------------------------------------------------------------------------

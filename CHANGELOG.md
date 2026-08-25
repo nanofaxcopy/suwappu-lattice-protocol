@@ -12,6 +12,16 @@ public-surface promise and the cross-version compatibility matrix.
 ## [Unreleased]
 
 ### Added
+- Chain deposit adapter: `BridgeEmitterDepositSource` reads
+  `BridgeEmitter.BridgeTransfer` logs (sender topic, amount word,
+  recipient-vault topic filter) over a sliding block window and feeds
+  the `DepositWatcher`; the inference service polls it on a background
+  thread when `SUWAPPU_INFER_BRIDGE_*` is configured, so an on-chain
+  stablecoin transfer becomes a prepaid balance with no manual step.
+  Window re-scans lean on the watcher's per-tx idempotency, making
+  restarts and RPC failures harmless; tested against a stub web3
+  client including decode, filtering, divisor, malformed-data skip,
+  and the live background-poll lifecycle
 - Runnable inference marketplace: `ltp.inference_service` composes the
   whole stack (ledger, market, HSM-safe receipt log per LTP-A-032,
   deposit watcher, epoch settlement, gateway) into one
