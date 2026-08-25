@@ -17,6 +17,20 @@ Usage:
 
 Note: uses the pre-stability inference surface (ltp.inference_service),
 which is not yet re-exported from ltp.__init__.
+
+Known CodeQL finding (false positive, do not "fix" by rewriting this):
+``py/clear-text-logging-sensitive-data`` fires on the ``[bill]`` print
+below. CodeQL classifies the response key ``billing`` as private data by
+name, and models ``print()`` as a log sink, so *any* read from
+``completion["billing"]`` that reaches output is flagged. What actually
+prints is a charge in micro-USD, a Merkle leaf index, and the customer's
+own balance, to the operator's own terminal. Verified locally against
+codeql-bundle-v2.25.6: this is the only alert in the repo's Python, and
+neither ``# codeql[...]`` nor ``# lgtm[...]`` inline suppression clears
+it in the CLI. It needs a dismissal in the Security tab, not a code
+change. The service code itself logs no customer financial data — see
+``src/ltp/gateway/routers/inference.py``, where request-derived values
+are deliberately kept out of log lines.
 """
 
 import json
