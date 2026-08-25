@@ -34,6 +34,7 @@
 * [Standards Work](eips/README.md)
 * [Deferred-Token Architecture](economics/DEFERRED_TOKEN_ARCHITECTURE.md)
 * [Validator Compute Incentives](economics/VALIDATOR_COMPUTE_INCENTIVES.md)
+* [Inference Revenue](economics/INFERENCE_REVENUE.md)
 
 ## Reference
 

@@ -120,7 +120,16 @@ Exit gate: `tests/proptest_compute_rewards.rs`, 4 properties (conservation
 + reserve backing; fail-closed coverage; work monotonicity; epoch replay),
 verified at `PROPTEST_CASES=10000 --release` and spot-checked at 200k.
 
-### 3.3 The bridge connection
+### 3.3 The inference connection
+
+The revenue engine that funds this loop at scale is metered model
+inference — see [`INFERENCE_REVENUE.md`](INFERENCE_REVENUE.md):
+customers buy completions against the network's own model through the
+gateway (`src/ltp/gateway/routers/inference.py`), and every settled
+request deposits its fee into the same `StablecoinLedger` split that
+pays providers here.
+
+### 3.4 The bridge connection
 
 Bridge volume is the revenue that makes the loop self-sustaining: bridge
 fees are stablecoin-denominated by construction (CCTP-shaped, per

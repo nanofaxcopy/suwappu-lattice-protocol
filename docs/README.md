@@ -61,6 +61,7 @@ New to LTP? Read in this order:
 | | [Standards Work](eips/README.md) | Draft ERCs and prepared EIP feedback |
 | | [Deferred-Token Architecture](economics/DEFERRED_TOKEN_ARCHITECTURE.md) | Stablecoin-native security, no premined token |
 | | [Validator Compute Incentives](economics/VALIDATOR_COMPUTE_INCENTIVES.md) | Compute in, proofs up, stablecoins out — the operator payment loop |
+| | [Inference Revenue](economics/INFERENCE_REVENUE.md) | Selling metered model inference in stablecoins — the demand side |
 | **Operations** | [Deployment Guide](DEPLOYMENT_GUIDE.md) | Docker, Kubernetes, CI/CD, key management |
 | | [Operator Runbook](OPERATOR_RUNBOOK.md) | Day-2 operations, key rotation, on-call |
 | | [Bridge MVP Scope](bridge-mvp-scope.md) | L1-L2 cross-chain bridge scope |

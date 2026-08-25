@@ -12,6 +12,17 @@ public-surface promise and the cross-version compatibility matrix.
 ## [Unreleased]
 
 ### Added
+- Inference revenue lane (`src/ltp/inference.py` + gateway router
+  `/inference/v1/*`, private surface — not re-exported from
+  `ltp.__init__`): sell metered model inference in stablecoins against a
+  deployment-injected model backend. Per-million-token pricing with
+  ceiling rounding, replay-guarded receipt settlement (SHA3-256
+  request/response digests, injectable verifier for LTP-commitment
+  auditing), revenue split through the incentive ledger so the serving
+  provider's claim is paid at epoch settlement under the solvency clamp.
+  OpenAI-shaped `/inference/v1/chat/completions` endpoint (JWT-protected),
+  `/models` and `/stats` reads. Design doc:
+  `docs/economics/INFERENCE_REVENUE.md`
 - Validator compute incentives (`src/ltp/incentives.py`, private surface —
   not yet re-exported from `ltp.__init__`): stablecoin-denominated
   implementation of the whitepaper §5.5 interfaces (`NodeIncentive`,
