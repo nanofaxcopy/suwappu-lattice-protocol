@@ -12,16 +12,31 @@ public-surface promise and the cross-version compatibility matrix.
 ## [Unreleased]
 
 ### Added
+- `docs/economics/BILLING_LEDGER_GAP_ANALYSIS.md`: measures the shipped
+  billing surface against production ledger practice (Modern Treasury
+  double-entry, TigerBeetle two-phase transfers, Stripe/Brandur
+  idempotency keys with recovery points, Trail of Bits blockchain
+  finality, LiteLLM token holds) and lists the gaps in priority order —
+  no durability, no cross-process coordination, no pending/posted
+  primitive, `tx_hash`-only deposit dedup, block-count instead of the
+  chain's `finalized` tag. Three limits were reproduced against this
+  code first: a restart resurrects spent balances and re-credits
+  on-chain deposits while `solvent=True` throughout, and the receipt
+  log retains ~3,951 B/receipt indefinitely. `incentives.py`,
+  `inference.py`, and `bridge_deposits.py` now carry the same
+  disclosure in their module docstrings
 - Chain deposit adapter: `BridgeEmitterDepositSource` reads
   `BridgeEmitter.BridgeTransfer` logs (sender topic, amount word,
   recipient-vault topic filter) over a sliding block window and feeds
   the `DepositWatcher`; the inference service polls it on a background
   thread when `SUWAPPU_INFER_BRIDGE_*` is configured, so an on-chain
   stablecoin transfer becomes a prepaid balance with no manual step.
-  Window re-scans lean on the watcher's per-tx idempotency, making
-  restarts and RPC failures harmless; tested against a stub web3
-  client including decode, filtering, divisor, malformed-data skip,
-  and the live background-poll lifecycle
+  Window re-scans lean on the watcher's per-tx idempotency, which
+  holds within a process lifetime — the dedup set is in memory, so a
+  restart re-credits deposits still inside the lookback window (see
+  `docs/economics/BILLING_LEDGER_GAP_ANALYSIS.md`); tested against a
+  stub web3 client including decode, filtering, divisor,
+  malformed-data skip, and the live background-poll lifecycle
 - Runnable inference marketplace: `ltp.inference_service` composes the
   whole stack (ledger, market, HSM-safe receipt log per LTP-A-032,
   deposit watcher, epoch settlement, gateway) into one

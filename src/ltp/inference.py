@@ -48,6 +48,19 @@ settles here. See ``docs/economics/INFERENCE_REVENUE.md``.
 
 Like ``ltp.incentives``, this module is intentionally NOT re-exported
 from ``ltp.__init__`` yet (private per ``docs/STABILITY_PROMISES.md``).
+
+.. warning::
+
+   **Durability posture: this state is in-memory only.** Balances, the
+   pool, per-node claims, and every dedup set live in the process. A
+   restart resurrects spent balances; a second replica has its own copy
+   of all of it, so the lock below serializes one process and nothing
+   more. The solvency invariant is checked against this process's own
+   numbers, so it reports healthy across a restart that lost money.
+   Production needs an append-only double-entry journal with derived
+   balances and a durable idempotency table — see
+   ``docs/economics/BILLING_LEDGER_GAP_ANALYSIS.md`` for what is missing
+   and in what order to fix it.
 """
 
 from __future__ import annotations

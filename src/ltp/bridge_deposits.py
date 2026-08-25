@@ -30,6 +30,24 @@ adapter is deployment wiring; the crediting rules live here.
 
 Like the rest of the inference stack, this module is NOT re-exported
 from ``ltp.__init__`` (private per ``docs/STABILITY_PROMISES.md``).
+
+.. warning::
+
+   **Durability posture: the credited-transaction set is in-memory
+   only.** Re-scanning a block window is idempotent *within one process
+   lifetime*; across a restart the set is empty, so every deposit still
+   inside the lookback window credits again. Two replicas each keep their
+   own set and will both credit the same transfer. Two further known
+   defects: dedup is keyed on ``tx_hash`` alone rather than
+   ``(tx_hash, log_index)`` (a single transaction can carry several
+   transfers), and confirmation depth is a block-count delta rather than
+   the chain's own finality signal (``eth_getBlockByNumber("finalized")``
+   on Ethereum and its L2s). The durable form — a uniqueness constraint
+   on ``(tx_hash, log_index)`` at the ledger entry itself, plus a
+   ``detected → confirmed → finalized → reversed`` state machine for
+   reorgs — is specified in
+   ``docs/economics/BILLING_LEDGER_GAP_ANALYSIS.md``.
+
 """
 
 from __future__ import annotations

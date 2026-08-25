@@ -45,14 +45,59 @@ architecture's "one operator economy."
 2. **One receipt, one settlement.** Settlement is keyed by `request_id`;
    replays are rejected. Same duplicate-redemption posture as the issuer
    precompile's two-phase burn on the chain side.
-3. **Receipts are evidence.** SHA3-256 digests (the canonical/on-chain hash
-   lane) of the exact request and response bodies ride the receipt; the
-   bodies never enter the billing path. The receipt verifier is injected —
-   production wires one that checks digests against an LTP commitment, so a
-   customer can audit "you billed me for exactly this exchange" against the
-   anchored log without anyone shipping the payloads. That is the LTP moat:
-   **no other inference market can hand its customers a post-quantum,
-   on-chain-anchored billing trail.**
+3. **Receipts are evidence of the bill, not of the work.** SHA3-256
+   digests (the canonical/on-chain hash lane) of the exact request and
+   response bodies ride the receipt; the bodies never enter the billing
+   path. The receipt verifier is injected — production wires one that
+   checks digests against an LTP commitment, so a customer can audit
+   "the invoice matches the exchange you attested to, and neither of us
+   can revise it after the fact" without anyone shipping the payloads.
+   **Read §2.1 before repeating this as a capability claim.**
+
+### 2.1 What the receipt proves — and what it does not
+
+Three claims get conflated in this market, and only the third is ours.
+Keeping them apart is a correctness requirement for our own docs and
+sales material, not modesty:
+
+| Claim | What it needs | Cost today | Do we have it? |
+|---|---|---|---|
+| *"This model, with these weights, produced this output for this input."* | zkML, or TEE attestation, or redundant execution with dispute | zkML 10³–10⁶× (impractical for LLMs); H100 confidential computing ~0–7%; Gensyn Verde 2-provider bisection ~2× inference | **No** |
+| *"Some real compute happened on real hardware."* | Hardware attestation / proof-of-work-done | Low, but see io.net: attestation proves the GPU exists and nothing about the job | **No** |
+| *"The invoice matches the metered events the provider attested to, and neither party can alter it retroactively."* | Signed, committed, append-only billing records | Negligible — one Merkle leaf + one signature per request | **Yes** |
+
+A provider that fabricates meter readings, signs them, and commits them
+produces a receipt that commits *perfectly to a lie*. The receipt makes
+the provider's claim **immutable and attributable**; it does not make it
+**true**. Calling this "verifiable inference" would be false, and a
+technical buyer catches it immediately.
+
+What it *is*, honestly stated: **settlement-integrity infrastructure**.
+It converts a billing dispute from he-said-she-said into an evidentiary
+one, and enables third-party audit and automated reconciliation. That is
+a real, unoccupied gap — the surveyed compute networks resolve disputes
+by defunding escrow (Akash), by human approval of watermarked output
+(Render), or not at all; none publishes a cryptographic trail linking
+metered usage → invoice → settlement. It maps to a buyer with existing
+budget (procurement, audit, FinOps, regulated deployments) rather than to
+the crypto-native "prove the model ran" obsession.
+
+It also **composes** with a verification primitive rather than competing
+with one: bind a TEE attestation quote into the receipt leaf and the
+receipt inherits a hardware-rooted claim about execution. The receipt is
+the settlement layer, and it is only ever as strong as the attestation
+bound into its leaves.
+
+**On post-quantum specifically.** ML-DSA on the tree heads protects
+against an adversary who can forge signatures on *historical* records —
+a store-now-forge-later threat against audit trails with 7–10 year
+regulatory retention. That is a coherent and narrow claim. It is *not* a
+competitive differentiator in the compute market itself: no competitor's
+economic security depends on signature longevity, since escrow, approval
+gates, and stake weighting all settle within blocks and are indifferent
+to a 2035 adversary. Positioning PQ as protecting *the market* would be
+marketing; positioning it as protecting *the durability of the audit
+record* is defensible.
 4. **Underpay rejected, overpay kept.** What was quoted is what settles.
 5. **Evicted nodes serve for free.** A receipt naming an evicted node still
    bills the customer (they got the response) but accrues no claim — the
@@ -138,8 +183,10 @@ attribution-explicit — deposits from unbound addresses are quarantined
 for operations, never guessed into an account. The chain side is
 `BridgeEmitterDepositSource`: it scans `BridgeEmitter.BridgeTransfer`
 logs for transfers to the deposit vault over a sliding block window
-(re-scans are free under the watcher's idempotency, so restarts and
-RPC hiccups can neither double-credit nor silently skip), and the
+(re-scans within a process lifetime are free under the watcher's
+idempotency — but that idempotency set is in memory, so a **restart
+re-credits every deposit still inside the lookback window**; see the
+gap analysis for the durable form), and the
 service polls it on a background thread (`SUWAPPU_INFER_BRIDGE_RPC_URL`
 / `_BRIDGE_EMITTER` / `_BRIDGE_DEPOSIT_RECIPIENT` activate it). With
 that set, the full money path is automatic: a customer sends
@@ -160,6 +207,25 @@ production posture the unit-test conftest normally disables.
   already there) is the scale-out step, and per-provider attribution is
   why receipts carry `node_id` from day one.
 - **The model itself.** This is the pipe and the till, not the weights.
+- **Durability — the big one.** Every balance, every settled `request_id`,
+  every credited tx hash, and the whole receipt log live in process
+  memory. A restart resurrects spent balances and re-credits on-chain
+  deposits, and the solvency invariant reports `solvent=True` throughout,
+  because it checks the process against itself rather than against the
+  world. Measured, not theorized.
+- **Cross-process coordination.** The `RLock` in §6 is correct for one
+  process and worth nothing across two: a second replica has its own
+  balances and its own dedup sets, so horizontal scaling silently
+  re-opens both the double-spend and the double-credit.
+- **Holds.** The serve floor is an admission gate, not a reservation, so
+  concurrent requests each pass it before any has debited — overrun
+  scales with concurrency.
+- **Receipt-log growth.** ~3,951 B/receipt retained indefinitely (~341
+  GB/day at 1000 req/s). Needs a persistence tier and retention policy.
+
+[`BILLING_LEDGER_GAP_ANALYSIS.md`](BILLING_LEDGER_GAP_ANALYSIS.md)
+measures each of these against how production billing ledgers are
+actually built, and gives the order to fix them in.
 
 ## 9. Reading order
 
@@ -170,3 +236,4 @@ production posture the unit-test conftest normally disables.
 5. `src/ltp/gateway/routers/inference.py` + `tests/test_gateway_inference.py`
 6. `src/ltp/inference_service.py` + `examples/inference_marketplace.py` —
    the composed, runnable marketplace
+7. `BILLING_LEDGER_GAP_ANALYSIS.md` — what this is not yet, and why

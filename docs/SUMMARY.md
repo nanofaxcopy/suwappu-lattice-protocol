@@ -35,6 +35,7 @@
 * [Deferred-Token Architecture](economics/DEFERRED_TOKEN_ARCHITECTURE.md)
 * [Validator Compute Incentives](economics/VALIDATOR_COMPUTE_INCENTIVES.md)
 * [Inference Revenue](economics/INFERENCE_REVENUE.md)
+* [Billing Ledger Gap Analysis](economics/BILLING_LEDGER_GAP_ANALYSIS.md)
 
 ## Reference
 
