@@ -27,7 +27,7 @@ class TestBLSDomainTags:
     def test_tag_count_updated(self):
         from src.ltp.domain import _ALL_TAGS
 
-        assert len(_ALL_TAGS) == 31  # 29 existing + 2 new BLS tags
+        assert len(_ALL_TAGS) == 32  # 29 pre-BLS + 2 BLS tags + DOMAIN_INFERENCE_RECEIPT
 
 
 class TestBLSDomainSign:

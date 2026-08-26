@@ -59,6 +59,10 @@ New to LTP? Read in this order:
 | | [Commitment Network Options](design-decisions/COMMITMENT_NETWORK_OPTIONS.md) | Custom L1 vs Ethereum L1/L2 analysis |
 | | [On-Chain PQ Verification](design-decisions/PQ_ONCHAIN_VERIFICATION.md) | Why ML-DSA can't be verified on-chain today, and the EIP/ERC path out |
 | | [Standards Work](eips/README.md) | Draft ERCs and prepared EIP feedback |
+| | [Deferred-Token Architecture](economics/DEFERRED_TOKEN_ARCHITECTURE.md) | Stablecoin-native security, no premined token |
+| | [Validator Compute Incentives](economics/VALIDATOR_COMPUTE_INCENTIVES.md) | Compute in, proofs up, stablecoins out — the operator payment loop |
+| | [Inference Revenue](economics/INFERENCE_REVENUE.md) | Selling metered model inference in stablecoins — the demand side |
+| | [Billing Ledger Gap Analysis](economics/BILLING_LEDGER_GAP_ANALYSIS.md) | Where the shipped billing surface falls short of production ledger practice |
 | **Operations** | [Deployment Guide](DEPLOYMENT_GUIDE.md) | Docker, Kubernetes, CI/CD, key management |
 | | [Operator Runbook](OPERATOR_RUNBOOK.md) | Day-2 operations, key rotation, on-call |
 | | [Bridge MVP Scope](bridge-mvp-scope.md) | L1-L2 cross-chain bridge scope |
