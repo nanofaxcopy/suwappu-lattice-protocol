@@ -21,12 +21,16 @@ jobs:
           # which Foundry version is requested. Install directly with retries instead, so a
           # bad download on one attempt just gets retried against a fresh CDN response.
           set +e
+          # Pin FOUNDRY_DIR explicitly -- foundryup-init.sh otherwise installs
+          # to $XDG_CONFIG_HOME/.foundry when that's set (as it is on GitHub's
+          # runner images), not $HOME/.foundry.
+          export FOUNDRY_DIR="$HOME/.foundry"
           for attempt in 1 2 3; do
             echo "Foundry install attempt $attempt/3"
             curl -L https://foundry.paradigm.xyz | bash
-            "$HOME/.foundry/bin/foundryup" --install v1.7.1
-            if "$HOME/.foundry/bin/forge" --version; then
-              echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
+            "$FOUNDRY_DIR/bin/foundryup" --install v1.7.1
+            if "$FOUNDRY_DIR/bin/forge" --version; then
+              echo "$FOUNDRY_DIR/bin" >> "$GITHUB_PATH"
               exit 0
             fi
             echo "Attempt $attempt failed, retrying in 10s..."
@@ -163,12 +167,16 @@ jobs:
           # which Foundry version is requested. Install directly with retries instead, so a
           # bad download on one attempt just gets retried against a fresh CDN response.
           set +e
+          # Pin FOUNDRY_DIR explicitly -- foundryup-init.sh otherwise installs
+          # to $XDG_CONFIG_HOME/.foundry when that's set (as it is on GitHub's
+          # runner images), not $HOME/.foundry.
+          export FOUNDRY_DIR="$HOME/.foundry"
           for attempt in 1 2 3; do
             echo "Foundry install attempt $attempt/3"
             curl -L https://foundry.paradigm.xyz | bash
-            "$HOME/.foundry/bin/foundryup" --install v1.7.1
-            if "$HOME/.foundry/bin/forge" --version; then
-              echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
+            "$FOUNDRY_DIR/bin/foundryup" --install v1.7.1
+            if "$FOUNDRY_DIR/bin/forge" --version; then
+              echo "$FOUNDRY_DIR/bin" >> "$GITHUB_PATH"
               exit 0
             fi
             echo "Attempt $attempt failed, retrying in 10s..."
@@ -213,12 +221,16 @@ jobs:
           # which Foundry version is requested. Install directly with retries instead, so a
           # bad download on one attempt just gets retried against a fresh CDN response.
           set +e
+          # Pin FOUNDRY_DIR explicitly -- foundryup-init.sh otherwise installs
+          # to $XDG_CONFIG_HOME/.foundry when that's set (as it is on GitHub's
+          # runner images), not $HOME/.foundry.
+          export FOUNDRY_DIR="$HOME/.foundry"
           for attempt in 1 2 3; do
             echo "Foundry install attempt $attempt/3"
             curl -L https://foundry.paradigm.xyz | bash
-            "$HOME/.foundry/bin/foundryup" --install v1.7.1
-            if "$HOME/.foundry/bin/forge" --version; then
-              echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
+            "$FOUNDRY_DIR/bin/foundryup" --install v1.7.1
+            if "$FOUNDRY_DIR/bin/forge" --version; then
+              echo "$FOUNDRY_DIR/bin" >> "$GITHUB_PATH"
               exit 0
             fi
             echo "Attempt $attempt failed, retrying in 10s..."
@@ -254,12 +266,16 @@ jobs:
           # which Foundry version is requested. Install directly with retries instead, so a
           # bad download on one attempt just gets retried against a fresh CDN response.
           set +e
+          # Pin FOUNDRY_DIR explicitly -- foundryup-init.sh otherwise installs
+          # to $XDG_CONFIG_HOME/.foundry when that's set (as it is on GitHub's
+          # runner images), not $HOME/.foundry.
+          export FOUNDRY_DIR="$HOME/.foundry"
           for attempt in 1 2 3; do
             echo "Foundry install attempt $attempt/3"
             curl -L https://foundry.paradigm.xyz | bash
-            "$HOME/.foundry/bin/foundryup" --install v1.7.1
-            if "$HOME/.foundry/bin/forge" --version; then
-              echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
+            "$FOUNDRY_DIR/bin/foundryup" --install v1.7.1
+            if "$FOUNDRY_DIR/bin/forge" --version; then
+              echo "$FOUNDRY_DIR/bin" >> "$GITHUB_PATH"
               exit 0
             fi
             echo "Attempt $attempt failed, retrying in 10s..."
