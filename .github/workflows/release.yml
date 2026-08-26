@@ -67,9 +67,26 @@ jobs:
         run: pip-audit --strict --vulnerability-service osv
 
       - name: Install Foundry (for ABI extraction)
-        uses: foundry-rs/foundry-toolchain@c7450ba673e133f5ee30098b3b54f444d3a2ca2d  # v1
-        with:
-          version: v1.7.1
+        run: |
+          # foundry-toolchain's bootstrap chain (foundry-rs/foundry -> foundry-rs/foundryup ->
+          # a GitHub release asset) has been intermittently serving a corrupted/invalid
+          # foundryup binary on fork-PR runners ("cannot execute binary file"), unrelated to
+          # which Foundry version is requested. Install directly with retries instead, so a
+          # bad download on one attempt just gets retried against a fresh CDN response.
+          set +e
+          for attempt in 1 2 3; do
+            echo "Foundry install attempt $attempt/3"
+            curl -L https://foundry.paradigm.xyz | bash
+            "$HOME/.foundry/bin/foundryup" --install v1.7.1
+            if "$HOME/.foundry/bin/forge" --version; then
+              echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
+              exit 0
+            fi
+            echo "Attempt $attempt failed, retrying in 10s..."
+            sleep 10
+          done
+          echo "::error::Failed to install Foundry after 3 attempts"
+          exit 1
 
       - name: Install Solidity dependencies
         working-directory: contracts
