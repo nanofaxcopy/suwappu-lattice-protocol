@@ -99,6 +99,7 @@ jobs:
           git config user.email "ci@suwappu.dev"
           forge install foundry-rs/forge-std
           forge install OpenZeppelin/openzeppelin-contracts
+          forge install succinctlabs/sp1-contracts
 
       - name: Extract contract ABIs
         run: make abi || true  # ABI target may be optional; do not block the release

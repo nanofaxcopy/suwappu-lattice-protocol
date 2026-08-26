@@ -46,6 +46,7 @@ jobs:
           git config user.email "ci@suwappu.dev"
           forge install foundry-rs/forge-std
           forge install OpenZeppelin/openzeppelin-contracts
+          forge install succinctlabs/sp1-contracts
 
       - name: Run forge tests
         working-directory: contracts
@@ -192,6 +193,7 @@ jobs:
           git config user.email "ci@suwappu.dev"
           forge install foundry-rs/forge-std
           forge install OpenZeppelin/openzeppelin-contracts
+          forge install succinctlabs/sp1-contracts
 
       - name: Slither static analysis
         uses: crytic/slither-action@f197989dea5b53e986d0f88c60a034ddd77ec9a8  # v0.4.0
@@ -246,6 +248,7 @@ jobs:
           git config user.email "ci@suwappu.dev"
           forge install foundry-rs/forge-std
           forge install OpenZeppelin/openzeppelin-contracts
+          forge install succinctlabs/sp1-contracts
 
       - name: Run invariant tests
         working-directory: contracts
@@ -299,6 +302,7 @@ jobs:
           git config user.email "ci@suwappu.dev"
           forge install foundry-rs/forge-std
           forge install OpenZeppelin/openzeppelin-contracts
+          forge install succinctlabs/sp1-contracts
           forge build
 
       - name: Start anvil
