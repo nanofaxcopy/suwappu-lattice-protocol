@@ -11,7 +11,99 @@ public-surface promise and the cross-version compatibility matrix.
 
 ## [Unreleased]
 
+### Fixed
+- Inference gateway no longer routes the request's own model name into
+  a log line or an error body. CodeQL flagged it as a high-severity
+  `py/log-injection`: a model id carrying newlines forges entries in the
+  log an operator reads during an incident, and the same value was
+  being reflected back in the 404. The pricing lookup now returns the
+  listing and the operator-registered `pricing.model_id` is used
+  downstream, so neither hazard survives; two regression tests pin it,
+  verified to fail with the fix reverted
+
 ### Added
+- `docs/economics/BILLING_LEDGER_GAP_ANALYSIS.md`: measures the shipped
+  billing surface against production ledger practice (Modern Treasury
+  double-entry, TigerBeetle two-phase transfers, Stripe/Brandur
+  idempotency keys with recovery points, Trail of Bits blockchain
+  finality, LiteLLM token holds) and lists the gaps in priority order —
+  no durability, no cross-process coordination, no pending/posted
+  primitive, `tx_hash`-only deposit dedup, block-count instead of the
+  chain's `finalized` tag. Three limits were reproduced against this
+  code first: a restart resurrects spent balances and re-credits
+  on-chain deposits while `solvent=True` throughout, and the receipt
+  log retains ~3,951 B/receipt indefinitely. `incentives.py`,
+  `inference.py`, and `bridge_deposits.py` now carry the same
+  disclosure in their module docstrings
+- Chain deposit adapter: `BridgeEmitterDepositSource` reads
+  `BridgeEmitter.BridgeTransfer` logs (sender topic, amount word,
+  recipient-vault topic filter) over a sliding block window and feeds
+  the `DepositWatcher`; the inference service polls it on a background
+  thread when `SUWAPPU_INFER_BRIDGE_*` is configured, so an on-chain
+  stablecoin transfer becomes a prepaid balance with no manual step.
+  Window re-scans lean on the watcher's per-tx idempotency, which
+  holds within a process lifetime — the dedup set is in memory, so a
+  restart re-credits deposits still inside the lookback window (see
+  `docs/economics/BILLING_LEDGER_GAP_ANALYSIS.md`); tested against a
+  stub web3 client including decode, filtering, divisor,
+  malformed-data skip, and the live background-poll lifecycle
+- Runnable inference marketplace: `ltp.inference_service` composes the
+  whole stack (ledger, market, HSM-safe receipt log per LTP-A-032,
+  deposit watcher, epoch settlement, gateway) into one
+  `build_inference_service()` with env-driven config
+  (`SUWAPPU_INFER_*`) and pluggable model backends —
+  `openai_compatible_backend` fronts the deployment's own runtime
+  (vLLM/TGI/llama.cpp) and bills on the runtime's `usage` counts.
+  `ltp.bridge_deposits.DepositWatcher` closes the money-in link:
+  idempotent-per-tx, confirmation-gated, attribution-explicit crediting
+  of bridged stablecoins into customer balances (unbound senders
+  quarantined, never guessed). `examples/inference_marketplace.py`
+  runs the full loop live — deposit → completion over real HTTP →
+  committed bill → verified audit proof → provider payout → solvency —
+  and `tests/test_inference_service.py` pins it as an integration
+  test, including under the implicit-HSM production posture the test
+  conftest normally disables
+- Committed inference receipts: `ReceiptCommitmentLog` commits every
+  bill's canonical, domain-separated receipt (new
+  `DOMAIN_INFERENCE_RECEIPT` tag) into the CT-style `MerkleLog` with an
+  ML-DSA-65 signed tree head per commit; the gateway commits before
+  settlement and the market verifier is the log, so an uncommitted or
+  tampered receipt cannot settle. Completions carry a
+  `billing.commitment` block and `GET /inference/v1/receipts/{id}`
+  serves the self-contained audit bundle (record, inclusion proof,
+  signed STH) a customer can verify without trusting the gateway
+- Prepaid inference billing: customer stablecoin balances on the
+  `StablecoinLedger` (deposit/balance/debit-to-fees/refund, inside the
+  solvency invariant), `InferenceMarket.settle_prepaid` debiting the
+  metered quote atomically (`InsufficientBalance` moves nothing and the
+  request stays settleable after a top-up), a configurable serve floor
+  bounding unbilled-compute exposure, gateway 402 flows before serving
+  and after metering, JWT-subject customer resolution with a dev header
+  fallback, and `GET /inference/v1/balance`
+- Inference revenue lane (`src/ltp/inference.py` + gateway router
+  `/inference/v1/*`, private surface — not re-exported from
+  `ltp.__init__`): sell metered model inference in stablecoins against a
+  deployment-injected model backend. Per-million-token pricing with
+  ceiling rounding, replay-guarded receipt settlement (SHA3-256
+  request/response digests, injectable verifier for LTP-commitment
+  auditing), revenue split through the incentive ledger so the serving
+  provider's claim is paid at epoch settlement under the solvency clamp.
+  OpenAI-shaped `/inference/v1/chat/completions` endpoint (JWT-protected),
+  `/models` and `/stats` reads. Design doc:
+  `docs/economics/INFERENCE_REVENUE.md`
+- Validator compute incentives (`src/ltp/incentives.py`, private surface —
+  not yet re-exported from `ltp.__init__`): stablecoin-denominated
+  implementation of the whitepaper §5.5 interfaces (`NodeIncentive`,
+  `CommitmentPricing`, `AdmissionControl`) per the deferred-token
+  architecture — proof-gated pay (zero passed audits earn zero), a
+  solvency-enforced `StablecoinLedger` (no minting; underfunded epochs
+  settle pro-rata and carry claims), stablecoin operator bonds with
+  progressive slashing into the insurance pool, and fee splits with the
+  burn share redirected to treasury. Design doc:
+  `docs/economics/VALIDATOR_COMPUTE_INCENTIVES.md` (also closes the §4
+  open question in `docs/economics/DEFERRED_TOKEN_ARCHITECTURE.md`);
+  chain-side counterpart lands in `suwappu-dag`
+  (`suwappu-precompiles::rewards`)
 - Quality-parity pass (cross-repo bar set by suwappubot):
   `scripts/verify.sh` single verification entrypoint with lanes
   (lint / semgrep / python / fast / contracts / secaudit / docs / all);
@@ -35,6 +127,22 @@ public-surface promise and the cross-version compatibility matrix.
   LTP-A-006 (Option E independent arbiter + time-decay paths),
   LTP-A-014 (KyberSlash audit — confirmed-OK + pin tightened),
   LTP-A-022 (cross-language BLS DST pinning — confirmed-OK)
+
+### Fixed
+- **Ledger solvency under concurrency.** Balance movements are
+  read-modify-write and the shipped service runs the bridge deposit
+  poller on its own thread against the same `StablecoinLedger` the
+  gateway debits, so unsynchronized movement broke the invariant the
+  whole economic design rests on — reproduced losing customer funds
+  *and* fabricating micro the ledger never held. Every mutator, the
+  check-and-debit sequence, `pay_from_pool`'s clamp, and the invariant
+  read now hold a reentrant lock (`ledger.lock` exposed for multi-step
+  atomicity); `InferenceMarket` guards its settled-set and revenue
+  counters; `settle_prepaid` defers to the ledger's locked
+  check-and-debit instead of reading the balance first. Regression
+  tests assert exact accounting across concurrent deposit/debit,
+  double-spend, and pool-overdraw paths, plus a service-level test
+  billing completions from four threads while the poller credits
 
 ### Changed
 - `CHANGELOG.md` entries now flag breaking changes inline with `**[BREAKING]**`

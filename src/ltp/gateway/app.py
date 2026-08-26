@@ -69,6 +69,10 @@ def create_app(config: Optional[GatewayConfig] = None) -> FastAPI:
     app.state.key_registry = None
     app.state.rate_limiter = None
     app.state.observability = None
+    app.state.inference_market = None
+    app.state.inference_backend = None
+    app.state.inference_node_id = None
+    app.state.inference_receipt_log = None
 
     if config.rate_limit_enabled:
         app.state.rate_limiter = RateLimiter(config.rate_limit_per_minute)
@@ -127,6 +131,7 @@ def create_app(config: Optional[GatewayConfig] = None) -> FastAPI:
     from .routers.diagnostics import router as diagnostics_router
     from .routers.federation import router as federation_router
     from .routers.health import router as health_router
+    from .routers.inference import router as inference_router
     from .routers.metrics import router as metrics_router
     from .routers.transfers import router as transfers_router
 
@@ -137,6 +142,7 @@ def create_app(config: Optional[GatewayConfig] = None) -> FastAPI:
     app.include_router(transfers_router)
     app.include_router(federation_router)
     app.include_router(metrics_router)
+    app.include_router(inference_router)
 
     # Catch-all for unknown endpoints
     @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])
@@ -172,6 +178,10 @@ class GatewayServer:
         public_mode: bool = False,
         keypair=None,
         key_registry=None,
+        inference_market=None,
+        inference_backend=None,
+        inference_node_id=None,
+        inference_receipt_log=None,
     ) -> None:
         self._config = config or GatewayConfig()
         self._app = create_app(self._config)
@@ -190,6 +200,10 @@ class GatewayServer:
         self._app.state.public_mode = public_mode
         self._app.state.keypair = keypair
         self._app.state.key_registry = key_registry
+        self._app.state.inference_market = inference_market
+        self._app.state.inference_backend = inference_backend
+        self._app.state.inference_node_id = inference_node_id
+        self._app.state.inference_receipt_log = inference_receipt_log
 
         # Build known_vks from keypair for self-issued token verification
         if keypair is not None:

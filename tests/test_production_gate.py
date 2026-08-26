@@ -64,10 +64,10 @@ class TestCryptoLayer:
         assert_real_crypto()
 
     def test_domain_separation_tags_unique(self):
-        """31 domain tags, no collisions, no byte-prefix overlaps."""
-        assert len(_ALL_TAGS) == 31
+        """32 domain tags, no collisions, no byte-prefix overlaps."""
+        assert len(_ALL_TAGS) == 32
         values = list(_ALL_TAGS.values())
-        assert len(set(values)) == 31  # All unique
+        assert len(set(values)) == 32  # All unique
 
 
 # =========================================================================
