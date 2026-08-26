@@ -2,6 +2,7 @@
 pragma solidity ^0.8.24;
 
 import {OptimisticBridgeChallenge} from "./OptimisticBridgeChallenge.sol";
+import {ISP1Verifier} from "sp1-contracts/ISP1Verifier.sol";
 
 /// @title ZKBridgeVerifier
 /// @author Suwappu (SUWAPPU)
